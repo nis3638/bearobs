@@ -42,7 +42,7 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 
 | 里程碑 | 目标 | 预计工作量 | 发布形态 | 执行状态 |
 |---|---|---:|---|---|
-| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 进行中：5/12 工作项完成 |
+| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 进行中：6/12 工作项完成 |
 | M1 | 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 未开始 |
 | M2 | WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 未开始 |
 | M3 | 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 未开始 |
@@ -56,10 +56,10 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 |---|---|
 | 当前里程碑 | M0：工程与风险基线 |
 | 当前进行中 | 无 |
-| 最近完成 | M0-01：建立 `bearobs` 独立 Git 仓库和 `main` 分支边界 |
-| 下一计划项 | M0-06：建立可控 WebDAV fixture 与协议契约测试 |
-| 退出阻塞 | M0-06～M0-12 尚未完成 |
-| 里程碑验收 | 未开始；必须完成 M0-06～M0-12 及 5.4 全部退出条件 |
+| 最近完成 | M0-06：建立可控 WebDAV fixture、故障注入与可执行契约 |
+| 下一计划项 | M0-07：Spike GRDB/FTS5 的 migration、异步访问和 10k 基线 |
+| 退出阻塞 | M0-07～M0-12 尚未完成 |
+| 里程碑验收 | 未开始；必须完成 M0-07～M0-12 及 5.4 全部退出条件 |
 
 状态含义：
 
@@ -113,10 +113,10 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | M0-01 | 将 `bearobs` 初始化为独立 Git 仓库 | 独立历史和分支边界 | 完成 | 独立 `.git`、`main` 分支；`git rev-parse --show-toplevel` 返回 `/Users/ivows/workspace/bearobs` |
 | M0-02 | 创建 iOS 26+ SwiftUI 工程 | App、Unit Test、UI Test targets | 完成 | `BearObs.xcodeproj`、共享 scheme、三个 targets；Unit Test target 已通过 `build-for-testing` |
 | M0-03 | 建立 CI | build、test、coverage、静态检查 | 完成 | `.github/workflows/ci.yml`、`scripts/ci/` 和 `Makefile` |
-| M0-04 | 建立依赖和配置管理 | 锁定版本、无硬编码秘密 | 完成 | `.xcode-version`、`Config/`、零第三方运行时依赖及秘密扫描 |
+| M0-04 | 建立依赖和配置管理 | 锁定版本、无硬编码秘密 | 完成 | `.xcode-version`、`Config/`、零第三方运行时依赖、工作树及全 Git 历史秘密扫描 |
 | M0-05 | 建立 Golden Vault | 兼容性和性能 fixture | 完成 | 13 个 parser case、1 MiB 大文件、256 个小文件；`make check` 与 test bundle 资源复制验证通过 |
-| M0-06 | 建立可控 WebDAV fixture | PROPFIND、GET、PUT、412 和故障注入 | 下一步 | 尚无 fixture 或契约测试 |
-| M0-07 | Spike GRDB/FTS5 | migration、异步访问、10k 基线 | 未开始 | 尚无实现证据 |
+| M0-06 | 建立可控 WebDAV fixture | PROPFIND、GET、PUT、412 和故障注入 | 完成 | 6 个合成资源、Depth:1 `207` golden、11 个 XCTest 契约、9 个故障/协议场景；`make check` 行为验证、`build-for-testing` 与 test bundle 资源复制通过 |
+| M0-07 | Spike GRDB/FTS5 | migration、异步访问、10k 基线 | 下一步 | 尚无实现证据 |
 | M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 未开始 | M0-05 只冻结 fixture 契约，没有实现 parser |
 | M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 未开始 | 尚无实现证据 |
 | M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 未开始 | 尚无实现证据 |

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "fixture": {
+    "id": "bearobs-controlled-webdav",
+    "milestone": "M0-06",
+    "synthetic": true,
+    "containsRealUserContent": false
+  },
+  "propfind": {
+    "percentEncodedPath": "/vault/",
+    "depth": "1",
+    "body": "responses/propfind-depth-1.xml"
+  },
+  "resources": [
+    {
+      "id": "vault",
+      "percentEncodedPath": "/vault/",
+      "kind": "collection"
+    },
+    {
+      "id": "note",
+      "percentEncodedPath": "/vault/note.md",
+      "kind": "file",
+      "body": "vault/note.md",
+      "etag": "\"note-v1\"",
+      "lastModified": "Tue, 28 Jul 2026 08:00:00 GMT"
+    },
+    {
+      "id": "weak-etag",
+      "percentEncodedPath": "/vault/weak-etag.md",
+      "kind": "file",
+      "body": "vault/weak-etag.md",
+      "etag": "W/\"weak-etag-v1\"",
+      "lastModified": "Tue, 28 Jul 2026 08:01:00 GMT"
+    },
+    {
+      "id": "no-etag",
+      "percentEncodedPath": "/vault/no-etag.md",
+      "kind": "file",
+      "body": "vault/no-etag.md",
+      "lastModified": "Tue, 28 Jul 2026 08:02:00 GMT"
+    },
+    {
+      "id": "unicode",
+      "percentEncodedPath": "/vault/Unicode/",
+      "kind": "collection"
+    },
+    {
+      "id": "unicode-percent",
+      "percentEncodedPath": "/vault/Unicode/%E7%A9%BA%20%E6%A0%BC%25.md",
+      "kind": "file",
+      "body": "vault/Unicode/空 格%.md",
+      "etag": "\"unicode-percent-v1\"",
+      "lastModified": "Tue, 28 Jul 2026 08:03:00 GMT"
+    }
+  ],
+  "requiredScenarios": [
+    "conditional-put",
+    "get",
+    "http-401",
+    "http-503",
+    "interrupted-download",
+    "percent-encoded-path",
+    "precondition-failed",
+    "propfind-depth-1",
+    "timeout"
+  ]
+}

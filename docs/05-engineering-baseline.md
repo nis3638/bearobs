@@ -1,11 +1,12 @@
-# BearObs M0-01～M0-05 工程基线
+# BearObs M0-01～M0-06 工程基线
 
 ## 范围
 
-本基线只覆盖独立 Git 边界、iOS 26+ SwiftUI 工程、测试 targets、CI、依赖与配置管理，
-以及 M0-05 Golden Vault。项目 Git 根目录固定为 `/Users/ivows/workspace/bearobs`，默认
-分支为 `main`；父目录仓库不再承载 BearObs 历史。本文件不代表完整 M0 完成，也不实现
-Vault、Markdown parser、索引、WebDAV 或同步业务。
+本基线只覆盖独立 Git 边界、iOS 26+ SwiftUI 工程、测试 targets、CI、依赖与配置管理、
+M0-05 Golden Vault，以及 M0-06 可控 WebDAV fixture。项目 Git 根目录固定为
+`/Users/ivows/workspace/bearobs`，默认分支为 `main`；父目录仓库不再承载 BearObs 历史。
+本文件不代表完整 M0 完成，也不实现 Vault、Markdown parser、索引、生产 WebDAV 客户端
+或同步业务。
 
 ## 工程约束
 
@@ -51,6 +52,32 @@ make ci         # 与 CI 相同的完整顺序
 机械样本由 `scripts/fixtures/generate-golden-vault-assets.swift` 确定性生成。语法样本保持
 手写和可审查，避免把兼容性语义藏进生成器。
 
+## M0-06 可控 WebDAV fixture
+
+- fixture 位于 `BearObsTests/Fixtures/WebDAV`，只含合成 Markdown、静态 `207 Multi-Status`
+  响应和显式 `contract.json`；
+- `ControlledWebDAVFixture` 通过每个测试独立的 HTTPS `.invalid` origin 和 session-local
+  `URLProtocol` 提供 PROPFIND Depth:1、精确字节 GET、已有文件条件 PUT、412/428 和 405；
+- 资源状态统一为百分号编码路径、正文、ETag、Last-Modified 和 revision；路径只解码一次，
+  PUT 只有强 ETag 精确匹配才提交，失败不得修改正文或 validator；
+- contract 引用的 fixture 文件在实际读取边界拒绝绝对路径、`.`、`..`、空段和解析后越根
+  的符号链接；门禁同时用 traversal 与 symlink 样本验证；
+- 故障队列按 method 和编码路径 FIFO 一次性消费，支持 401/503、`URLError`、部分响应后
+  中断；不使用随机延迟、真实端口或公网服务；
+- 请求诊断只保留 method、编码 path、body 长度和结果，不记录 Authorization、URL query、
+  userinfo 或正文；
+- `scripts/fixtures/verify-webdav-fixture.swift` 验证静态契约、资源、场景和 XML 元数据；
+  `verify-webdav-behavior.swift` 在无 Simulator 条件下编译并执行同一份 fixture 行为；
+- 11 个 XCTest 契约已通过 Swift 6 严格并发 `build-for-testing`，WebDAV 目录已验证复制到
+  Unit Test bundle。
+
+本机当前没有已安装的 iOS Simulator runtime，`simctl list runtimes` 为空，因此本轮
+`make test` 无法启动运行目标。该环境缺口不影响无 Simulator 行为验证、Debug/Release 构建
+或 test bundle 编译；安装 iOS 26.5 runtime 后，现有 test plan 会直接执行这些 XCTest。
+
+该 fixture 只证明 HTTP 客户端接缝，不证明真实 TLS、认证 challenge、重定向或厂商方言；
+这些仍由 M0-11 和 M2-A6 的真实服务认证负责。
+
 ## 依赖与配置
 
 - 当前第三方运行时依赖：无。
@@ -59,5 +86,5 @@ make ci         # 与 CI 相同的完整顺序
 - GRDB、swift-markdown 和 YAML parser 必须等对应 M0 Spike 验证后再加入，不能提前假装已锁定。
 - `Config/Secrets.xcconfig`、`.env*` 和构建产物被忽略。源码和普通配置不得存放凭据。
 - WebDAV 凭据未来只进入 Keychain；CI 凭据只进入 CI secret store。
-- 零依赖静态检查覆盖常见云端、GitHub、Slack、OpenAI、私钥和认证头模式；首次提交建立
-  独立历史后，还必须增加全历史秘密扫描，不能把工作树扫描冒充历史审计。
+- 零依赖静态检查覆盖常见云端、GitHub、Slack、OpenAI、私钥和认证头模式，并同时扫描
+  当前工作树与所有 Git revisions；输出只报告命中，不回显可能的秘密。

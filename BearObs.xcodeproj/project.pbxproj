@@ -13,6 +13,9 @@
 		B0A000000000000000000004 /* BearObsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000014 /* BearObsUITests.swift */; };
 		B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001E /* GoldenVaultContractTests.swift */; };
 		B0A000000000000000000006 /* GoldenVault in Resources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001F /* GoldenVault */; };
+		B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000020 /* WebDAVFixtureContractTests.swift */; };
+		B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000A1 /* ControlledWebDAVFixture.swift */; };
+		B0A000000000000000000009 /* WebDAV in Resources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000A2 /* WebDAV */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +52,9 @@
 		B0A00000000000000000001D /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
 		B0A00000000000000000001E /* GoldenVaultContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenVaultContractTests.swift; sourceTree = "<group>"; };
 		B0A00000000000000000001F /* GoldenVault */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fixtures/GoldenVault; sourceTree = "<group>"; };
+		B0A000000000000000000020 /* WebDAVFixtureContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVFixtureContractTests.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000A1 /* ControlledWebDAVFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport/ControlledWebDAVFixture.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000A2 /* WebDAV */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fixtures/WebDAV; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,7 +96,10 @@
 			children = (
 				B0A000000000000000000013 /* BearObsTests.swift */,
 				B0A00000000000000000001E /* GoldenVaultContractTests.swift */,
+				B0A000000000000000000020 /* WebDAVFixtureContractTests.swift */,
+				B0A0000000000000000000A1 /* ControlledWebDAVFixture.swift */,
 				B0A00000000000000000001F /* GoldenVault */,
+				B0A0000000000000000000A2 /* WebDAV */,
 			);
 			path = BearObsTests;
 			sourceTree = "<group>";
@@ -185,13 +194,13 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		B0A000000000000000000063 /* App Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		B0A000000000000000000064 /* Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000006 /* GoldenVault in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000064 /* Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000006 /* GoldenVault in Resources */, B0A000000000000000000009 /* WebDAV in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000065 /* UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */, B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */, B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000062 /* UI Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000004 /* BearObsUITests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

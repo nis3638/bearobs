@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/vault/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/vault/note.md</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"note-v1"</d:getetag>
+        <d:getlastmodified>Tue, 28 Jul 2026 08:00:00 GMT</d:getlastmodified>
+        <d:getcontentlength>78</d:getcontentlength>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/vault/weak-etag.md</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>W/"weak-etag-v1"</d:getetag>
+        <d:getlastmodified>Tue, 28 Jul 2026 08:01:00 GMT</d:getlastmodified>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/vault/no-etag.md</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getlastmodified>Tue, 28 Jul 2026 08:02:00 GMT</d:getlastmodified>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+    <d:propstat>
+      <d:prop><d:getetag/></d:prop>
+      <d:status>HTTP/1.1 404 Not Found</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/vault/Unicode/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
