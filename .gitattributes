@@ -1,0 +1,6 @@
+* text=auto
+
+# These generated fixtures assert exact bytes and must not be normalized or diffed as text.
+BearObsTests/Fixtures/GoldenVault/vault/Encoding/crlf.md binary
+BearObsTests/Fixtures/GoldenVault/vault/Encoding/utf8-bom.md binary
+BearObsTests/Fixtures/GoldenVault/vault/Performance/large-note.md binary

@@ -1,0 +1,826 @@
+# BearObs 开发设计文档
+
+> 文档状态：已确认基线
+> 版本：1.0
+> 日期：2026-07-28
+> 上游文档：[产品需求](01-product-requirements.md) · [技术路线](02-technical-roadmap.md)
+
+## 1. 设计目标
+
+本设计服务于 iOS 26+ 对外 MVP。目标设备是所有纳入兼容性测试且能够运行 iOS 26 的 iPhone，不限定为 iPhone 17 系列。设计重点保证：
+
+- 本地工作副本优先，网络不阻塞内容访问；
+- Markdown 和附件保持 Obsidian 兼容；
+- 内容索引可删除重建；
+- 远端写入有条件保护；
+- 双边变化保留双方，不静默覆盖；
+- 模块边界可替换、可测试，不把业务规则绑死在 SwiftUI、SQLite 或 WebDAV 上。
+
+## 2. 设计范围
+
+包含：
+
+- Vault 连接和本地目录；
+- Markdown 解析、索引、搜索和渲染；
+- 笔记列表、标签、阅读、收藏和编辑；
+- WebDAV 拉取、条件上传和冲突处理；
+- 附件按需缓存；
+- 安全、日志、恢复和测试设计。
+
+不包含：
+
+- App 内创建、删除和重命名；
+- 完整 Obsidian 插件与语法兼容；
+- 跨设备收藏；
+- 业务云后端；
+- 富文本和 Live Preview；
+- AI 能力。
+
+## 3. 四类架构设计
+
+### 3.1 业务架构
+
+业务过程由六个稳定能力组成：
+
+1. 配置并验证远端 Vault；
+2. 建立可离线使用的本地工作副本；
+3. 从工作副本派生浏览和搜索能力；
+4. 对已有 Markdown 进行本地原子编辑；
+5. 根据同步基线安全交换变化；
+6. 对无法自动合并的变化进行显式冲突治理。
+
+内容安全优先级高于同步速度，确定行为优先级高于后台自动化。
+
+### 3.2 应用架构
+
+```mermaid
+flowchart TB
+    UI["SwiftUI Features"] --> UC["Application Use Cases"]
+    UC --> DM["Domain Models and Policies"]
+    UC --> VP["Vault Repository Port"]
+    UC --> IP["Index Repository Port"]
+    UC --> SP["Sync Ledger Port"]
+    UC --> RP["Remote Vault Port"]
+    VP --> FS["Local File Adapter"]
+    IP --> DB1["index.sqlite"]
+    SP --> DB2["sync.sqlite"]
+    RP --> WD["WebDAV Adapter"]
+    UC --> US["User State Port"]
+    US --> JSON["user-state.json"]
+```
+
+应用层只编排用例；领域层做同步、路径和链接规则；基础设施层实现文件、SQLite、WebDAV 和 Keychain。SwiftUI 不直接操作数据库、文件或网络。
+
+### 3.3 数据架构
+
+数据按所有权和恢复策略拆分：
+
+| 存储 | 内容 | 所有权 | 恢复策略 |
+|---|---|---|---|
+| `Files/` | Markdown 工作副本 | 用户内容 | 不得由索引覆盖；从远端或未同步本地内容恢复 |
+| `Cache/Attachments/` | 已下载附件 | 缓存 | 可删除并从远端重新下载 |
+| `Metadata/index.sqlite` | 笔记、标签、链接、FTS | 派生索引 | 从 `Files/` 重建 |
+| `Metadata/sync.sqlite` | 基线、运行状态、冲突引用 | 同步协调状态 | 丢失后进入保守重建，禁止直接写远端 |
+| `Metadata/user-state.json` | 收藏和本机偏好 | 本机用户状态 | 原子写；不参与索引重建 |
+| `Conflicts/` | 本地与远端冲突副本 | 用户待处理内容 | 解决前不可清理 |
+| Keychain | WebDAV 凭据 | 敏感配置 | 用户重新输入 |
+
+### 3.4 技术架构
+
+- SwiftUI 提供界面与导航。
+- Swift Concurrency 提供结构化并发。
+- `@MainActor` 只承载界面状态。
+- `SyncCoordinator` 使用 actor 保证每个 Vault 同时只有一个同步运行。
+- GRDB 管理 SQLite 迁移、事务、异步访问和 FTS5。
+- `swift-markdown` 解析标准 Markdown AST。
+- 自定义源码扫描器解析 Obsidian 扩展并保留源码范围。
+- `URLSession` 和 `XMLParser` 实现受控 WebDAV 子集。
+- Keychain 保存凭据。
+- XCUITest 覆盖原生 iOS 关键流程。
+
+## 4. 建议工程结构
+
+```text
+BearObs/
+├── App/
+│   ├── BearObsApp.swift
+│   ├── AppEnvironment.swift
+│   └── AppRouter.swift
+├── Features/
+│   ├── Onboarding/
+│   ├── Library/
+│   ├── Tags/
+│   ├── Search/
+│   ├── Reader/
+│   ├── Editor/
+│   ├── Conflicts/
+│   └── Settings/
+├── Application/
+│   ├── Vault/
+│   ├── Indexing/
+│   ├── Search/
+│   ├── Editing/
+│   └── Sync/
+├── Domain/
+│   ├── Notes/
+│   ├── Paths/
+│   ├── Links/
+│   └── Sync/
+├── Infrastructure/
+│   ├── LocalVault/
+│   ├── Markdown/
+│   ├── Index/
+│   ├── SyncLedger/
+│   ├── WebDAV/
+│   ├── Keychain/
+│   └── Observability/
+├── Resources/
+└── Tests/
+    ├── Unit/
+    ├── Integration/
+    ├── Contract/
+    ├── Performance/
+    └── UI/
+```
+
+规则：
+
+- 按能力组织，不建立巨型 `Models`、`Services`、`ViewModels` 杂物目录。
+- 单个 ViewModel 只负责一个界面或流程，并调用应用用例。
+- 文件通常保持 200-400 行，超过 800 行必须拆分。
+- 函数通常小于 50 行；出现四层以上嵌套时先重构数据流。
+- 领域值优先不可变；状态变化通过返回新值或受控 actor 完成。
+
+## 5. 文件系统布局
+
+```text
+Application Support/BearObs/
+└── Vaults/
+    └── <vault-id>/
+        ├── Files/
+        │   └── <vault-relative-markdown-path>
+        ├── Cache/
+        │   └── Attachments/
+        │       └── <path-digest>
+        ├── Conflicts/
+        │   └── <conflict-id>/
+        │       ├── local.md
+        │       ├── remote.md
+        │       └── metadata.json
+        ├── Staging/
+        └── Metadata/
+            ├── index.sqlite
+            ├── sync.sqlite
+            └── user-state.json
+```
+
+约束：
+
+- `vault-id` 是本机生成的稳定标识，不包含凭据。
+- 所有 Vault 路径在进入文件系统前转换为 `VaultPath`。
+- `VaultPath` 只允许规范化相对路径。
+- 拒绝空路径段、绝对路径、NUL、`.`、`..` 和规范化后越界。
+- Staging 文件与目标文件必须在支持原子替换的同一卷。
+- 冲突目录不属于普通缓存清理范围。
+
+## 6. 核心领域模型
+
+### 6.1 VaultPath
+
+职责：
+
+- 保存规范化、百分号解码后的 Vault 相对路径；
+- 统一路径分隔符；
+- 提供父目录、扩展名和文件名；
+- 拒绝目录穿越和非法 Unicode 规范化结果；
+- 作为 MVP 文件身份。
+
+不得在各模块重复手写字符串拼接和路径校验。
+
+### 6.2 Note
+
+索引层的不可变读模型：
+
+| 字段 | 说明 |
+|---|---|
+| `path` | 主键，`VaultPath` |
+| `title` | Frontmatter `title`、首个 H1、文件名的统一结果 |
+| `preview` | 去除结构标记后的短摘要 |
+| `contentHash` | 本地文件 SHA-256 |
+| `modifiedAt` | 本地已知修改时间，仅用于排序和扫描优化 |
+| `byteSize` | 文件大小 |
+| `parseStatus` | 正常、部分降级或失败 |
+
+文件内容不由 `Note` 模型拥有，读取正文时从工作副本获取。
+
+### 6.3 ParsedNote
+
+单次解析产生的不可变结果：
+
+- title；
+- preview；
+- frontmatter 范围与只读值；
+- tags；
+- wiki links；
+- embeds；
+- 标准 Markdown AST 或渲染中间表示；
+- 诊断信息；
+- 原始编码和换行风格信息。
+
+### 6.4 SyncBaseline
+
+| 字段 | 说明 |
+|---|---|
+| `path` | Vault 相对路径 |
+| `baseLocalHash` | 上次成功同步后的本地内容 hash |
+| `remoteETag` | 上次成功同步的 ETag，可空 |
+| `remoteLastModified` | 远端时间，仅作辅助 |
+| `remoteSize` | 远端大小 |
+| `lastSyncedAt` | 最近成功提交基线的时间 |
+| `entryState` | synced、localModified、pendingDownload、pendingUpload、conflict |
+
+基线提交只能发生在文件操作和远端 validator 都确认成功之后。
+
+### 6.5 SyncDecision
+
+同步规划器只接受值，不执行 I/O：
+
+```text
+plan(
+  baseline: SyncBaseline?,
+  local: LocalResourceState,
+  remote: RemoteResourceState
+) -> SyncDecision
+```
+
+可能结果：
+
+- noAction；
+- download；
+- upload；
+- removeLocal；
+- conflict；
+- unsupported；
+- needsConservativeRecovery。
+
+这个函数必须使用表驱动测试穷举状态组合。
+
+### 6.6 Conflict
+
+冲突包含：
+
+- 原始 Vault 路径；
+- 冲突类型；
+- 本地副本路径和 hash；
+- 远端副本路径、ETag 和 hash；
+- 创建时间；
+- 当前状态；
+- 解决选择；
+- 解决尝试使用的远端前置条件。
+
+## 7. 端口与适配器
+
+### 7.1 LocalVaultStore
+
+职责：
+
+- 流式枚举 Markdown；
+- 读取文件和计算 hash；
+- 暂存下载；
+- 原子替换；
+- 只在已验证未修改时移除本地文件；
+- 报告磁盘不足、权限和编码错误。
+
+不负责：
+
+- 同步决策；
+- SQL；
+- UI 状态；
+- WebDAV。
+
+### 7.2 NoteParser
+
+职责：
+
+- 从原始字节解析 UTF-8 Markdown；
+- 识别 BOM 和换行风格；
+- 提取 Frontmatter、标签、链接和嵌入；
+- 构建标准 Markdown AST；
+- 返回局部诊断而不是随意抛弃整篇内容。
+
+### 7.3 IndexRepository
+
+职责：
+
+- 执行 schema migration；
+- 以单事务替换单篇笔记的全部派生记录；
+- 删除路径对应的派生记录；
+- 查询列表、标签、链接和 FTS；
+- 全量重建。
+
+### 7.4 SyncLedgerRepository
+
+职责：
+
+- 读取和提交同步基线；
+- 记录运行和每条 action 的状态；
+- 保存冲突元数据引用；
+- 在崩溃后识别未完成 action；
+- 不保存笔记正文。
+
+### 7.5 RemoteVaultClient
+
+职责：
+
+- 验证连接和能力；
+- 按目录列举资源；
+- 下载到调用者提供的 staging sink；
+- 条件上传；
+- 返回结构化远端 validator 和错误。
+
+MVP 不暴露远端删除和移动接口，避免未使用能力进入写路径。
+
+### 7.6 UserStateRepository
+
+职责：
+
+- 原子读写收藏和本机偏好；
+- 移除已不存在路径的有效收藏；
+- 不访问 Markdown 和同步账本。
+
+## 8. SQLite 设计
+
+### 8.1 `index.sqlite`
+
+建议表：
+
+#### notes
+
+| 列 | 约束 |
+|---|---|
+| `path` | TEXT PRIMARY KEY |
+| `title` | TEXT NOT NULL |
+| `preview` | TEXT NOT NULL |
+| `content_hash` | TEXT NOT NULL |
+| `modified_at` | DOUBLE NOT NULL |
+| `byte_size` | INTEGER NOT NULL |
+| `parse_status` | TEXT NOT NULL |
+
+#### tags
+
+| 列 | 约束 |
+|---|---|
+| `normalized_name` | TEXT PRIMARY KEY |
+| `display_name` | TEXT NOT NULL |
+
+#### note_tags
+
+- `note_path` 外键到 notes，删除级联；
+- `tag_name` 外键到 tags；
+- 复合主键避免重复。
+
+#### links
+
+- `source_path`；
+- `raw_target`；
+- `alias`；
+- `resolved_path` 可空；
+- `resolution_state` 为 resolved、missing 或 ambiguous。
+
+#### attachments
+
+- `note_path`；
+- `raw_target`；
+- `resolved_path` 可空；
+- `cache_state`。
+
+#### note_fts
+
+FTS5 字段：
+
+- path；
+- title；
+- body；
+- tags。
+
+初始 tokenizer 使用 `unicode61`。中文搜索质量必须用真实语料验收，不能因为“能查到几个词”就宣布完成。
+
+### 8.2 `sync.sqlite`
+
+建议表：
+
+- `vaults`：非敏感远端标识、根路径、能力；
+- `sync_entries`：每个路径的基线和状态；
+- `sync_runs`：运行阶段、计数、结果和脱敏错误；
+- `conflicts`：冲突目录引用和解决状态。
+
+关键约束：
+
+- `sync_entries.path` 唯一；
+- 基线更新和 action 完成记录在同一事务提交；
+- 数据库迁移与 `index.sqlite` 独立；
+- “重建索引”绝不能删除或重建 `sync.sqlite`。
+
+## 9. Markdown 解析设计
+
+### 9.1 处理顺序
+
+1. 解码 UTF-8，识别 BOM 和换行；
+2. 仅当文件第一行是 `---` 时识别 Frontmatter；
+3. 找到闭合分隔符，记录原始范围；
+4. 使用 YAML 解析器读取所需字段，不序列化回原文；
+5. 使用 `swift-markdown` 解析正文；
+6. 收集代码范围；
+7. 在排除范围之外扫描 Inline Tag、Wiki Link 和 Embed；
+8. 生成不可变 `ParsedNote`；
+9. 以事务更新索引。
+
+### 9.2 标题规则
+
+固定优先级：
+
+1. Frontmatter 非空字符串 `title`；
+2. 正文首个 ATX H1；
+3. 文件名去扩展名。
+
+不使用正文任意首行猜标题，避免列表或代码被误判。
+
+### 9.3 标签规则
+
+- Frontmatter 支持单字符串、逗号分隔字符串和字符串数组；
+- Inline Tag 支持 Unicode 字母、数字、连接符、下划线和 `/`；
+- 标准化查询名使用 Unicode 规范化和不区分大小写比较；
+- 展示名保留首次或最稳定的原始形式；
+- 代码、URL 和 HTML 属性中的 `#` 不进入标签。
+
+### 9.4 Wiki Link 规则
+
+支持：
+
+- `[[Note]]`；
+- `[[Folder/Note]]`；
+- `[[Note|Alias]]`；
+- `![[image.png]]`。
+
+解析优先级：
+
+1. 显式 Vault 相对路径精确匹配；
+2. 相对源笔记目录匹配；
+3. Vault 根目录匹配；
+4. 唯一文件名匹配；
+5. 多个候选则 ambiguous，不自动跳转。
+
+标题别名和 Obsidian 更复杂的最短路径算法留到后续兼容阶段。
+
+### 9.5 编辑保存
+
+编辑器持有原始 Markdown 文本，不编辑 AST。保存流程：
+
+1. 校验目标仍在 Vault 根目录；
+2. 编码为 UTF-8，尽量保留 BOM 和换行风格；
+3. 写入 Staging；
+4. flush 并关闭文件；
+5. 原子替换目标；
+6. 重新读取并计算 hash；
+7. 更新索引；
+8. 标记 `localModified`；
+9. 触发同步。
+
+任何一步失败都返回结构化错误；基线不得提前更新。
+
+## 10. WebDAV 设计
+
+### 10.1 支持的协议子集
+
+- `PROPFIND`：资源发现和元数据；
+- `GET`：Markdown 和附件下载；
+- `PUT`：仅更新已有 Markdown；
+- `HEAD`：仅在认证服务验证可靠时作优化。
+
+MVP 不从 App 调用 `DELETE`、`MOVE`、`COPY`、`LOCK`。
+
+### 10.2 目录扫描
+
+- 使用 `Depth: 1` 的广度优先扫描，避免服务端 `Depth: infinity` 的兼容和资源风险；
+- 正确解析 `207 Multi-Status`；
+- 对 XML namespace 和 `propstat` 状态做兼容解析；
+- 每个返回 URL 只解码一次并转换为 `VaultPath`；
+- 拒绝跨 origin 重定向和越出根目录的响应；
+- 默认排除 `.obsidian/`、`.trash/` 和 BearObs 自身保留目录；
+- 排除规则集中配置，不散落在扫描代码中。
+
+### 10.3 下载
+
+1. GET 流式写入 Staging；
+2. 同步计算 SHA-256；
+3. 验证响应状态和可用长度；
+4. 再次确认本地状态没有在下载期间改变；
+5. 原子替换；
+6. 更新索引；
+7. 提交新基线。
+
+### 10.4 上传
+
+1. 读取当前本地 hash；
+2. 确认与规划时一致；
+3. 使用基线 ETag 发出 `If-Match` PUT；
+4. `412` 或 validator 不一致转为冲突；
+5. 上传成功后重新获取远端 validator；
+6. 确认本地在上传期间未再次变化；
+7. 若再次变化，保持 `localModified` 并安排下一轮；
+8. 否则提交新基线。
+
+### 10.5 认证和 TLS
+
+- 使用 URLSession challenge 与 Keychain 凭据；
+- 只接受系统默认信任评估；
+- 不提供“忽略证书错误”开关；
+- 不在日志中记录认证头、密码和带敏感查询参数的 URL；
+- 重定向后必须保持 HTTPS 和允许的 origin。
+
+## 11. 同步执行设计
+
+### 11.1 运行状态机
+
+```text
+idle
+  -> scanningLocal
+  -> scanningRemote
+  -> planning
+  -> applyingDownloads
+  -> applyingUploads
+  -> indexing
+  -> completed
+```
+
+旁路状态：
+
+- waitingForNetwork；
+- requiresAuthentication；
+- conflictsPresent；
+- cancelled；
+- failedRecoverable；
+- failedTerminal。
+
+状态机是单向事件驱动，不用散布在多个 ViewModel 的布尔值组合表示。
+
+### 11.2 运行流程
+
+```mermaid
+sequenceDiagram
+    participant UI as UI
+    participant SC as SyncCoordinator
+    participant LS as LocalVaultStore
+    participant RC as RemoteVaultClient
+    participant PL as SyncPlanner
+    participant IX as IndexRepository
+
+    UI->>SC: requestSync(trigger)
+    SC->>LS: scanLocal()
+    SC->>RC: scanRemote()
+    SC->>PL: plan(baselines, local, remote)
+    PL-->>SC: immutable actions
+    loop bounded actions
+        SC->>LS: stage or inspect
+        SC->>RC: GET or conditional PUT
+        SC->>LS: atomic replace
+        SC->>IX: update changed note
+    end
+    SC-->>UI: summary and conflicts
+```
+
+### 11.3 并发规则
+
+- 每个 Vault 同时只有一个 `SyncCoordinator` 运行；
+- 下载允许小规模有界并发，默认值通过性能测试确定；
+- 同一路径的 action 必须串行；
+- SQLite 写入通过 GRDB 写事务串行化；
+- UI 更新在 `@MainActor`；
+- 取消只停止尚未提交的 action，不回滚已成功且已记录的文件；
+- 下一次运行从账本识别未完成 action 并安全恢复。
+
+### 11.4 冲突创建
+
+创建冲突时：
+
+1. 冻结当前本地内容到 `local.md`；
+2. 下载远端内容到 `remote.md`；
+3. 写入 `metadata.json`；
+4. 原子提交冲突目录；
+5. 在 `sync.sqlite` 记录冲突；
+6. 保持正常工作副本不被远端覆盖；
+7. 在列表和详情展示冲突状态。
+
+## 12. 搜索与索引设计
+
+### 12.1 增量索引
+
+- 初筛使用路径、大小和修改时间；
+- 可疑变化计算 SHA-256；
+- hash 不变跳过解析；
+- hash 变化时解析并在单事务更新 notes、tags、links、attachments 和 FTS；
+- 删除路径在单事务清理派生记录；
+- 失败笔记记录诊断并保留可搜索的安全标题。
+
+### 12.2 搜索查询
+
+- 用户输入先做长度和字符规范化；
+- 使用参数绑定，不拼接 SQL；
+- 标题和标签赋予高于正文的排序权重；
+- 返回短摘要，不加载全部匹配正文到内存；
+- 空查询走最近笔记查询；
+- 查询取消随用户输入更新传播。
+
+## 13. UI 与状态设计
+
+### 13.1 主要导航
+
+- Onboarding：连接、验证、首次同步；
+- Library：全部、收藏、最近、标签；
+- Search：输入、结果和空状态；
+- Reader：Markdown、Wiki Link、图片；
+- Editor：原始 Markdown、脏状态、保存结果；
+- Conflicts：冲突列表、双方预览和解决；
+- Settings：连接信息、同步状态、缓存和诊断。
+
+### 13.2 状态所有权
+
+- Feature Model 只拥有界面状态和用户意图；
+- Application Use Case 拥有流程；
+- Repository 拥有持久化接口；
+- actor 拥有跨任务可变协调状态；
+- 领域模型保持不可变；
+- 不通过全局单例共享可变业务状态。
+
+### 13.3 交互约束
+
+- 首屏先显示本地索引，不等待远端；
+- 同步状态克制地显示，不遮挡阅读；
+- 冲突和错误提供明确操作，不只显示红点；
+- 图标按钮使用 SF Symbols 并提供辅助功能标签；
+- 支持 Dynamic Type、VoiceOver 和深色模式；
+- 不复制 Bear 的商标、图标或专有视觉。
+
+## 14. 错误模型
+
+统一错误分类：
+
+| 类别 | 示例 | 用户行为 |
+|---|---|---|
+| configuration | URL 或路径无效 | 修改配置 |
+| authentication | 401、凭据过期 | 重新认证 |
+| tls | 证书不受信任 | 修复服务证书 |
+| remoteUnavailable | 超时、5xx | 稍后重试 |
+| incompatibleServer | PROPFIND 或条件写不可靠 | 查看兼容性说明 |
+| pathRejected | 越界或非法路径 | 跳过并报告 |
+| localStorage | 磁盘不足、权限失败 | 释放空间后重试 |
+| parsing | 局部语法异常 | 原文降级阅读 |
+| database | 迁移或索引损坏 | 重建索引 |
+| conflict | 双边变化 | 显式解决 |
+| cancelled | 用户取消 | 保留已提交进度 |
+
+错误必须保留底层诊断用于本地调试，但用户文案不泄露凭据或正文。
+
+## 15. 恢复设计
+
+### 15.1 `index.sqlite` 损坏
+
+- 隔离损坏数据库；
+- 新建数据库并执行迁移；
+- 从 `Files/` 全量重建；
+- 不触碰 `sync.sqlite`、收藏和冲突目录。
+
+### 15.2 `sync.sqlite` 损坏或丢失
+
+- 禁止自动上传和远端删除；
+- 重新扫描本地与远端；
+- 内容相同的路径建立新基线；
+- 内容不同或无法证明相同的路径进入保守冲突；
+- 用户确认恢复完成后才重新开放写路径。
+
+### 15.3 Staging 残留
+
+- 启动时读取同步运行记录；
+- 未提交的 staging 文件按 action 状态恢复或清理；
+- 不根据文件名猜测成功；
+- 只清理可证明无引用的临时文件。
+
+### 15.4 缓存清理
+
+- 只删除 `Cache/Attachments/`；
+- 不删除 Markdown、账本、收藏、冲突和待上传内容；
+- 被阅读的附件可重新下载。
+
+## 16. 安全设计
+
+- 所有输入在系统边界验证；
+- SQL 使用参数绑定；
+- WebDAV XML 限制响应大小和解析资源；
+- 文件下载采用有界缓冲；
+- 拒绝路径穿越、跨 origin 重定向和不安全 scheme；
+- Keychain 访问封装为可测试接口；
+- 日志按字段分类脱敏；
+- 不把真实 Vault 内容加入测试仓库；
+- 发布前检查依赖漏洞、许可证和隐私清单；
+- 任何发现的 Critical/High 问题在发布前清零。
+
+## 17. 测试设计
+
+### 17.1 测试原则
+
+- 测外部行为和领域契约，不锁死私有实现；
+- 优先最高稳定接缝；
+- 新行为先写失败测试，再写最小实现；
+- 测试不得依赖真实个人 Vault 或公开网络；
+- 时间、UUID、网络和文件系统故障通过依赖注入控制。
+
+### 17.2 单元测试
+
+| 模块 | 重点 |
+|---|---|
+| VaultPath | Unicode、编码、`.`、`..`、绝对路径、越界 |
+| NoteParser | Frontmatter、标签、代码排除、Wiki Link、异常降级 |
+| LinkResolver | 路径优先级、同名、missing、ambiguous |
+| SyncPlanner | 全部 base/local/remote 组合 |
+| EditPolicy | 编码、换行、未编辑内容保留 |
+| CachePolicy | 大小上限、淘汰和保护目录 |
+
+### 17.3 集成测试
+
+- 临时目录中的原子写、进程中断和磁盘错误模拟；
+- GRDB migration、事务、FTS5、删除与全量重建；
+- `URLProtocol` 或本地 WebDAV fixture 的 PROPFIND/GET/PUT；
+- Keychain 适配器边界；
+- 下载、索引、编辑、上传的应用用例闭环。
+
+### 17.4 契约测试
+
+WebDAV 测试矩阵至少覆盖：
+
+- 标准 `207 Multi-Status`；
+- 混合 `propstat`；
+- 缺失 ETag；
+- 弱 ETag；
+- URL 编码和 Unicode 路径；
+- 认证失败；
+- `412`；
+- 中断下载；
+- 5xx 与退避；
+- 远端删除；
+- 跨 origin 重定向拒绝。
+
+在一个用户确认的真实服务上运行同一套认证用例。
+
+### 17.5 UI 测试
+
+使用 XCUITest 覆盖：
+
+- 首次连接和错误配置；
+- 首次同步；
+- 离线浏览、搜索和阅读；
+- 编辑和本地保存；
+- 无冲突上传；
+- 双边修改冲突；
+- 冲突解决；
+- 清理附件缓存。
+
+### 17.6 性能与故障测试
+
+- 10,000 Markdown 索引和搜索；
+- 2 GB 附件清单与有界缓存；
+- 1 MB Markdown 打开和滚动；
+- 网络切换、超时、限速和中断；
+- 磁盘不足；
+- App 在 staging、替换和基线提交各阶段终止；
+- 索引和同步账本分别损坏。
+
+### 17.7 覆盖率
+
+- Domain、Markdown、Vault、Sync、WebDAV 安全边界行覆盖率不低于 80%；
+- 同一范围分支覆盖率不低于 80%；
+- 生成代码和纯布局代码不用于稀释分母；
+- 覆盖率不是替代故障注入和契约测试的数字游戏。
+
+## 18. 需要形成的 ADR
+
+M0 应提交以下简短架构决策记录：
+
+1. ADR-001：Vault 内容事实源与本地工作副本；
+2. ADR-002：路径作为 MVP 文件身份；
+3. ADR-003：索引、同步账本和用户状态物理隔离；
+4. ADR-004：三方同步和无静默覆盖；
+5. ADR-005：Markdown 原文编辑而非 AST 全文回写；
+6. ADR-006：首个认证 WebDAV 服务和能力矩阵；
+7. ADR-007：中文 FTS 策略。
+
+## 19. 开发完成定义
+
+一个功能只有同时满足以下条件才算完成：
+
+- 对应 PRD 需求和验收标准可追溯；
+- 先有失败测试并已通过；
+- 错误、取消和恢复路径已实现；
+- 无正文或凭据泄露；
+- 代码审查无 Critical/High 问题；
+- 文档和 ADR 与实际行为一致；
+- 全量测试、覆盖率和相关性能预算通过。

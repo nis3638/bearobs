@@ -1,0 +1,222 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B0A000000000000000000001 /* BearObsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000011 /* BearObsApp.swift */; };
+		B0A000000000000000000002 /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000012 /* ProjectShellView.swift */; };
+		B0A000000000000000000003 /* BearObsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000013 /* BearObsTests.swift */; };
+		B0A000000000000000000004 /* BearObsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000014 /* BearObsUITests.swift */; };
+		B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001E /* GoldenVaultContractTests.swift */; };
+		B0A000000000000000000006 /* GoldenVault in Resources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001F /* GoldenVault */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B0A000000000000000000021 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B0A000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B0A000000000000000000040;
+			remoteInfo = BearObs;
+		};
+		B0A000000000000000000022 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B0A000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B0A000000000000000000040;
+			remoteInfo = BearObs;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B0A000000000000000000010 /* BearObs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BearObs.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0A000000000000000000011 /* BearObsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsApp.swift; sourceTree = "<group>"; };
+		B0A000000000000000000012 /* ProjectShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectShellView.swift; sourceTree = "<group>"; };
+		B0A000000000000000000013 /* BearObsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsTests.swift; sourceTree = "<group>"; };
+		B0A000000000000000000014 /* BearObsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsUITests.swift; sourceTree = "<group>"; };
+		B0A000000000000000000015 /* BearObsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BearObsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0A000000000000000000016 /* BearObsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BearObsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0A000000000000000000017 /* BearObs.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = BearObs.xctestplan; sourceTree = "<group>"; };
+		B0A000000000000000000018 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		B0A000000000000000000019 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		B0A00000000000000000001A /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = App.xcconfig; sourceTree = "<group>"; };
+		B0A00000000000000000001B /* Tests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tests.xcconfig; sourceTree = "<group>"; };
+		B0A00000000000000000001C /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		B0A00000000000000000001D /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
+		B0A00000000000000000001E /* GoldenVaultContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenVaultContractTests.swift; sourceTree = "<group>"; };
+		B0A00000000000000000001F /* GoldenVault */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fixtures/GoldenVault; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B0A000000000000000000050 /* App Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000051 /* Unit Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000052 /* UI Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B0A000000000000000000030 = {
+			isa = PBXGroup;
+			children = (
+				B0A000000000000000000031 /* BearObs */,
+				B0A000000000000000000032 /* BearObsTests */,
+				B0A000000000000000000033 /* BearObsUITests */,
+				B0A000000000000000000034 /* Config */,
+				B0A000000000000000000017 /* BearObs.xctestplan */,
+				B0A000000000000000000035 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B0A000000000000000000031 /* BearObs */ = {
+			isa = PBXGroup;
+			children = (B0A000000000000000000036 /* App */);
+			path = BearObs;
+			sourceTree = "<group>";
+		};
+		B0A000000000000000000036 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B0A000000000000000000011 /* BearObsApp.swift */,
+				B0A000000000000000000012 /* ProjectShellView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B0A000000000000000000032 /* BearObsTests */ = {
+			isa = PBXGroup;
+			children = (
+				B0A000000000000000000013 /* BearObsTests.swift */,
+				B0A00000000000000000001E /* GoldenVaultContractTests.swift */,
+				B0A00000000000000000001F /* GoldenVault */,
+			);
+			path = BearObsTests;
+			sourceTree = "<group>";
+		};
+		B0A000000000000000000033 /* BearObsUITests */ = {isa = PBXGroup; children = (B0A000000000000000000014 /* BearObsUITests.swift */); path = BearObsUITests; sourceTree = "<group>"; };
+		B0A000000000000000000034 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				B0A00000000000000000001C /* Base.xcconfig */,
+				B0A000000000000000000018 /* Debug.xcconfig */,
+				B0A000000000000000000019 /* Release.xcconfig */,
+				B0A00000000000000000001A /* App.xcconfig */,
+				B0A00000000000000000001B /* Tests.xcconfig */,
+				B0A00000000000000000001D /* Secrets.example.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		B0A000000000000000000035 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B0A000000000000000000010 /* BearObs.app */,
+				B0A000000000000000000015 /* BearObsTests.xctest */,
+				B0A000000000000000000016 /* BearObsUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B0A000000000000000000040 /* BearObs */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0A000000000000000000090 /* App configurations */;
+			buildPhases = (B0A000000000000000000060 /* App Sources */, B0A000000000000000000050 /* App Frameworks */, B0A000000000000000000063 /* App Resources */);
+			buildRules = ();
+			dependencies = ();
+			name = BearObs;
+			productName = BearObs;
+			productReference = B0A000000000000000000010 /* BearObs.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B0A000000000000000000041 /* BearObsTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0A000000000000000000091 /* Unit configurations */;
+			buildPhases = (B0A000000000000000000061 /* Unit Sources */, B0A000000000000000000051 /* Unit Frameworks */, B0A000000000000000000064 /* Unit Resources */);
+			buildRules = ();
+			dependencies = (B0A000000000000000000023 /* PBXTargetDependency */);
+			name = BearObsTests;
+			productName = BearObsTests;
+			productReference = B0A000000000000000000015 /* BearObsTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B0A000000000000000000042 /* BearObsUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B0A000000000000000000092 /* UI configurations */;
+			buildPhases = (B0A000000000000000000062 /* UI Sources */, B0A000000000000000000052 /* UI Frameworks */, B0A000000000000000000065 /* UI Resources */);
+			buildRules = ();
+			dependencies = (B0A000000000000000000024 /* PBXTargetDependency */);
+			name = BearObsUITests;
+			productName = BearObsUITests;
+			productReference = B0A000000000000000000016 /* BearObsUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B0A000000000000000000070 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					B0A000000000000000000040 = {CreatedOnToolsVersion = 26.5; };
+					B0A000000000000000000041 = {CreatedOnToolsVersion = 26.5; TestTargetID = B0A000000000000000000040; };
+					B0A000000000000000000042 = {CreatedOnToolsVersion = 26.5; TestTargetID = B0A000000000000000000040; };
+				};
+			};
+			buildConfigurationList = B0A000000000000000000093 /* Project configurations */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = B0A000000000000000000030;
+			productRefGroup = B0A000000000000000000035 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (B0A000000000000000000040 /* BearObs */, B0A000000000000000000041 /* BearObsTests */, B0A000000000000000000042 /* BearObsUITests */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B0A000000000000000000063 /* App Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000064 /* Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000006 /* GoldenVault in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000065 /* UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000062 /* UI Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000004 /* BearObsUITests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B0A000000000000000000023 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B0A000000000000000000040 /* BearObs */; targetProxy = B0A000000000000000000021 /* PBXContainerItemProxy */; };
+		B0A000000000000000000024 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B0A000000000000000000040 /* BearObs */; targetProxy = B0A000000000000000000022 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B0A000000000000000000080 /* Project Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A000000000000000000018 /* Debug.xcconfig */; buildSettings = {SDKROOT = iphoneos; ENABLE_TESTABILITY = YES;}; name = Debug; };
+		B0A000000000000000000081 /* Project Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A000000000000000000019 /* Release.xcconfig */; buildSettings = {SDKROOT = iphoneos;}; name = Release; };
+		B0A000000000000000000082 /* App Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001A /* App.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic; ENABLE_PREVIEWS = YES; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";}; name = Debug; };
+		B0A000000000000000000083 /* App Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001A /* App.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic; ENABLE_PREVIEWS = YES; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";}; name = Release; };
+		B0A000000000000000000084 /* Unit Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.tests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BearObs.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BearObs";}; name = Debug; };
+		B0A000000000000000000085 /* Unit Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.tests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BearObs.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BearObs";}; name = Release; };
+		B0A000000000000000000086 /* UI Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_TARGET_NAME = BearObs;}; name = Debug; };
+		B0A000000000000000000087 /* UI Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_TARGET_NAME = BearObs;}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B0A000000000000000000090 /* App configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000082 /* App Debug */, B0A000000000000000000083 /* App Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B0A000000000000000000091 /* Unit configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000084 /* Unit Debug */, B0A000000000000000000085 /* Unit Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B0A000000000000000000092 /* UI configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000086 /* UI Debug */, B0A000000000000000000087 /* UI Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B0A000000000000000000093 /* Project configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000080 /* Project Debug */, B0A000000000000000000081 /* Project Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = B0A000000000000000000070 /* Project object */;
+}

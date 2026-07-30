@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned Xcode
+        run: ./scripts/ci/check.sh
+
+      - name: Build Debug and Release
+        run: ./scripts/ci/build.sh
+
+      - name: Run unit and UI tests
+        run: ./scripts/ci/test.sh
+
+      - name: Collect coverage
+        run: ./scripts/ci/coverage.sh
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bearobs-test-evidence
+          path: |
+            .build/TestResults
+            .build/reports
+          if-no-files-found: warn
+          retention-days: 7

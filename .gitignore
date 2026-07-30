@@ -1,0 +1,20 @@
+.DS_Store
+
+# Xcode
+DerivedData/
+.build/
+build/
+*.xcresult
+*.xccovarchive
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+
+# Swift Package Manager
+.swiftpm/
+
+# Local-only configuration and secrets
+Config/Secrets.xcconfig
+*.env
+.env.*
+!.env.example

@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "fixture": {
+    "id": "bearobs-golden-vault",
+    "milestone": "M0-05",
+    "synthetic": true,
+    "containsRealUserContent": false,
+    "vaultRoot": "vault"
+  },
+  "parserCases": [
+    {
+      "id": "yaml-string-tags",
+      "features": ["yaml-frontmatter"],
+      "path": "Metadata/yaml-string.md",
+      "expected": {
+        "frontmatter": {
+          "state": "valid",
+          "tags": ["alpha", "project/mobile", "中文"]
+        }
+      }
+    },
+    {
+      "id": "yaml-array-tags",
+      "features": ["yaml-frontmatter"],
+      "path": "Metadata/yaml-array.md",
+      "expected": {
+        "frontmatter": {
+          "state": "valid",
+          "tags": ["beta", "project/ios", "研发"]
+        }
+      }
+    },
+    {
+      "id": "inline-tags-and-code-exclusions",
+      "features": ["inline-tags", "code-exclusions"],
+      "path": "Tags/inline-and-code.md",
+      "expected": {
+        "inlineTags": ["AI", "project/mobile", "研发/ios"],
+        "excludedSourceTokens": [
+          "#ignored-inline",
+          "[[IgnoredInlineLink]]",
+          "#ignored-fence",
+          "[[IgnoredFenceLink]]",
+          "#ignored-url",
+          "#ignored-html"
+        ]
+      }
+    },
+    {
+      "id": "same-name-and-explicit-wiki-links",
+      "features": ["wiki-links"],
+      "path": "Links/Home.md",
+      "expected": {
+        "links": [
+          {
+            "source": "[[Twin]]",
+            "target": "Twin",
+            "state": "ambiguous",
+            "candidates": ["Links/Area A/Twin.md", "Links/Area B/Twin.md"]
+          },
+          {
+            "source": "[[Area A/Twin]]",
+            "target": "Area A/Twin",
+            "state": "resolved",
+            "resolvedPath": "Links/Area A/Twin.md",
+            "candidates": []
+          },
+          {
+            "source": "[[Area B/Twin|Second twin]]",
+            "target": "Area B/Twin",
+            "alias": "Second twin",
+            "state": "resolved",
+            "resolvedPath": "Links/Area B/Twin.md",
+            "candidates": []
+          },
+          {
+            "source": "[[Unicode/空 格%计划]]",
+            "target": "Unicode/空 格%计划",
+            "state": "resolved",
+            "resolvedPath": "Links/Unicode/空 格%计划.md",
+            "candidates": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "source-directory-wiki-link",
+      "features": ["wiki-links"],
+      "path": "Links/Area A/Source.md",
+      "expected": {
+        "links": [
+          {
+            "source": "[[Twin]]",
+            "target": "Twin",
+            "state": "resolved",
+            "resolvedPath": "Links/Area A/Twin.md",
+            "candidates": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "unicode-space-percent-path",
+      "features": ["path-encoding"],
+      "path": "Links/Unicode/空 格%计划.md",
+      "expected": {}
+    },
+    {
+      "id": "local-and-missing-images",
+      "features": ["attachments"],
+      "path": "Attachments/image-note.md",
+      "expected": {
+        "attachments": [
+          {
+            "syntax": "obsidian-embed",
+            "source": "![[Assets/local.svg]]",
+            "target": "Assets/local.svg",
+            "state": "resolved",
+            "resolvedPath": "Assets/local.svg"
+          },
+          {
+            "syntax": "obsidian-embed",
+            "source": "![[Assets/missing.png]]",
+            "target": "Assets/missing.png",
+            "state": "missing"
+          },
+          {
+            "syntax": "markdown-image",
+            "source": "![Synthetic local image](../Assets/local.svg)",
+            "target": "../Assets/local.svg",
+            "state": "resolved",
+            "resolvedPath": "Assets/local.svg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid-frontmatter-unclosed",
+      "features": ["invalid-frontmatter"],
+      "path": "Frontmatter/unclosed.md",
+      "expected": {
+        "frontmatter": {
+          "state": "invalid",
+          "diagnostic": "frontmatter.unclosed"
+        }
+      }
+    },
+    {
+      "id": "invalid-frontmatter-yaml",
+      "features": ["invalid-frontmatter"],
+      "path": "Frontmatter/malformed-yaml.md",
+      "expected": {
+        "frontmatter": {
+          "state": "invalid",
+          "diagnostic": "frontmatter.invalid-yaml"
+        }
+      }
+    },
+    {
+      "id": "utf8-bom-lf",
+      "features": ["byte-encoding"],
+      "path": "Encoding/utf8-bom.md",
+      "expected": {
+        "encoding": {
+          "utf8BOM": true,
+          "lineEnding": "lf"
+        }
+      }
+    },
+    {
+      "id": "utf8-no-bom-lf",
+      "features": ["byte-encoding"],
+      "path": "Encoding/lf.md",
+      "expected": {
+        "encoding": {
+          "utf8BOM": false,
+          "lineEnding": "lf"
+        }
+      }
+    },
+    {
+      "id": "utf8-no-bom-crlf",
+      "features": ["byte-encoding"],
+      "path": "Encoding/crlf.md",
+      "expected": {
+        "encoding": {
+          "utf8BOM": false,
+          "lineEnding": "crlf"
+        }
+      }
+    },
+    {
+      "id": "unsupported-obsidian-source-fallback",
+      "features": ["unsupported-syntax"],
+      "path": "Unsupported/obsidian.md",
+      "expected": {
+        "fallback": {
+          "preservedSource": [
+            "> [!NOTE]",
+            "==synthetic highlight==",
+            "%% synthetic comment %%",
+            "^synthetic-block"
+          ],
+          "diagnostics": []
+        }
+      }
+    }
+  ],
+  "performance": {
+    "largeNote": {
+      "path": "Performance/large-note.md",
+      "byteCount": 1048576
+    },
+    "smallNotes": {
+      "directory": "Performance/Small",
+      "count": 256
+    }
+  }
+}

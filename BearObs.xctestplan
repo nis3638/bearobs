@@ -1,0 +1,39 @@
+{
+  "configurations" : [
+    {
+      "id" : "6B0A8EF5-AC67-45D4-9D75-B0BF0FD01130",
+      "name" : "Default",
+      "options" : {
+        "language" : "en",
+        "region" : "US"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:BearObs.xcodeproj",
+      "identifier" : "B0A000000000000000000040",
+      "name" : "BearObs"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:BearObs.xcodeproj",
+        "identifier" : "B0A000000000000000000041",
+        "name" : "BearObsTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:BearObs.xcodeproj",
+        "identifier" : "B0A000000000000000000042",
+        "name" : "BearObsUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
