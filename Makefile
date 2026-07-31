@@ -1,4 +1,4 @@
-.PHONY: build test coverage check ci clean
+.PHONY: build test coverage check ci spike-grdb spike-markdown clean
 
 build:
 	./scripts/ci/build.sh
@@ -14,6 +14,12 @@ check:
 
 ci:
 	./scripts/ci/run.sh
+
+spike-grdb:
+	./scripts/spikes/verify-grdb-fts5.sh
+
+spike-markdown:
+	./scripts/spikes/verify-markdown.sh
 
 clean:
 	rm -rf .build

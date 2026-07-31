@@ -27,6 +27,12 @@ jobs:
       - name: Verify pinned Xcode
         run: ./scripts/ci/check.sh
 
+      - name: Verify GRDB and FTS5 spike
+        run: ./scripts/spikes/verify-grdb-fts5.sh
+
+      - name: Verify Markdown spike
+        run: ./scripts/spikes/verify-markdown.sh
+
       - name: Build Debug and Release
         run: ./scripts/ci/build.sh
 

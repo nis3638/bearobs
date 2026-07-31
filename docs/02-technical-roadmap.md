@@ -122,8 +122,11 @@ flowchart TD
 
 当前文档核验的依赖能力：
 
-- GRDB 7.11.1 提供数据库迁移、异步读写和 FTS5 支持；M0 Spike 后锁定兼容版本。
-- `swift-markdown` 提供不可变 Markdown AST、`MarkupWalker` 和 `MarkupVisitor`，适合元数据遍历和自定义渲染。
+- M0-07 已验证并精确锁定 GRDB 7.11.1：显式 migration、原生 async read/write、FTS5
+  `unicode61` 和 iOS 26 交叉编译均通过；正式 `index.sqlite` schema 仍由 M1-B1 建立。
+- M0-08 已验证并精确锁定 `swift-markdown` 0.8.0 与 Yams 6.2.2：标准 Markdown AST、
+  `SourceRange`、只读 Frontmatter、Obsidian 扩展扫描、诊断渲染和 iOS 26 交叉编译均通过；
+  正式 parser、链接解析和原生 Reader 仍由 M1-A2～M1-A5、M1-C4 建立。
 
 不在路线中引入：
 
