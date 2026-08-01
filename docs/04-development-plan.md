@@ -55,7 +55,7 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | 项目 | 当前状态 |
 |---|---|
 | 当前里程碑 | M0：工程与风险基线 |
-| 当前进行中 | 无 |
+| 当前进行中 | M0-11 真实服务认证；M0-12 ADR-006 待服务确认 |
 | 最近完成 | M0-10：冻结 VaultPath、SyncDecision、CAS 计划和错误模型 |
 | 下一计划项 | M0-11：选择首个真实 WebDAV 认证服务 |
 | 退出阻塞 | M0-11～M0-12 尚未完成 |
@@ -120,8 +120,8 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 完成 | 隔离 SwiftPM Spike 锁定 swift-markdown 0.8.0 与 Yams 6.2.2；14 个 XCTest 覆盖 AST、只读 Frontmatter、标签/链接/Embed 排除与转义、Golden Vault 契约预期、无效 UTF-8、BOM/换行和性能；源码行覆盖率 93.74%，iOS 26 arm64 交叉编译通过 |
 | M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 完成 | 隔离 SwiftPM Spike 以稳定父目录 descriptor、同目录 exclusive staging、`fsync`、mode 保留、inode 核对、单次 `rename` 和父目录同步替换已有文件；15 个 XCTest 覆盖 ENOSPC、短写/EINTR、权限、sync/close/rename、提交后错误、符号链接、字节保留及四类路径竞争；独立进程验证 7 个 SIGKILL 阶段；region 87.04%、line 94.88%，iOS 26 arm64 交叉编译通过 |
 | M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 完成 | App Domain 冻结已解码/百分号路径双入口、NFC 身份、只解码一次和 Codable 重校验；纯 `SyncPlanner` 区分 tracked/initialImport/conservativeRecovery，破坏性计划携带 CAS，缺失可靠写前置条件永不 upload；强 ETag 从完整响应头解析，内容身份与写保护条件分离；错误恢复动作由 11 类错误唯一派生，诊断仅白名单结构字段；22 个 host XCTest 通过，region 98.89%、line 99.44%，Xcode test bundle 与 iOS 26 arm64 交叉编译通过 |
-| M0-11 | 选择首个认证服务 | 真实 WebDAV 测试目标 | 未开始 | 尚无决策记录 |
-| M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 未开始 | 尚无 ADR 文件 |
+| M0-11 | 选择首个认证服务 | 真实 WebDAV 测试目标 | 进行中 | 已形成候选与验收矩阵；缺少专用账号、可信 HTTPS 实例和认证证据 |
+| M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 进行中 | ADR-001～005、007 已 Accepted；ADR-006 为 Proposed，等待 M0-11 服务确认 |
 
 ### 5.3 Golden Vault 内容
 
