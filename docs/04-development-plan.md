@@ -42,7 +42,7 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 
 | 里程碑 | 目标 | 预计工作量 | 发布形态 | 执行状态 |
 |---|---|---:|---|---|
-| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 进行中：8/12 工作项完成 |
+| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 进行中：10/12 工作项完成 |
 | M1 | 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 未开始 |
 | M2 | WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 未开始 |
 | M3 | 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 未开始 |
@@ -56,10 +56,10 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 |---|---|
 | 当前里程碑 | M0：工程与风险基线 |
 | 当前进行中 | 无 |
-| 最近完成 | M0-08：Markdown AST、Frontmatter、扩展扫描、诊断渲染和 iOS 编译 Spike |
-| 下一计划项 | M0-09：Spike 原子文件写、崩溃与磁盘失败测试 |
-| 退出阻塞 | M0-09～M0-12 尚未完成 |
-| 里程碑验收 | 未开始；必须完成 M0-09～M0-12 及 5.4 全部退出条件 |
+| 最近完成 | M0-10：冻结 VaultPath、SyncDecision、CAS 计划和错误模型 |
+| 下一计划项 | M0-11：选择首个真实 WebDAV 认证服务 |
+| 退出阻塞 | M0-11～M0-12 尚未完成 |
+| 里程碑验收 | 未开始；必须完成 M0-11～M0-12 及 5.4 全部退出条件 |
 
 状态含义：
 
@@ -118,8 +118,8 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | M0-06 | 建立可控 WebDAV fixture | PROPFIND、GET、PUT、412 和故障注入 | 完成 | 6 个合成资源、Depth:1 `207` golden、11 个 XCTest 契约、9 个故障/协议场景；`make check` 行为验证、`build-for-testing` 与 test bundle 资源复制通过 |
 | M0-07 | Spike GRDB/FTS5 | migration、异步访问、10k 基线 | 完成 | 隔离 SwiftPM Spike 锁定 GRDB 7.11.1；7 个测试覆盖 v1→v2 回填、幂等、事务回滚、并发 async 读写、FTS 更新与 `unicode61`；10k Release 写入 2.855～3.204 秒、搜索 P95 0.302～0.330 毫秒；源码行覆盖率 99.02%，iOS 26 arm64 交叉编译通过 |
 | M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 完成 | 隔离 SwiftPM Spike 锁定 swift-markdown 0.8.0 与 Yams 6.2.2；14 个 XCTest 覆盖 AST、只读 Frontmatter、标签/链接/Embed 排除与转义、Golden Vault 契约预期、无效 UTF-8、BOM/换行和性能；源码行覆盖率 93.74%，iOS 26 arm64 交叉编译通过 |
-| M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 未开始 | 尚无实现证据 |
-| M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 未开始 | 尚无实现证据 |
+| M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 完成 | 隔离 SwiftPM Spike 以稳定父目录 descriptor、同目录 exclusive staging、`fsync`、mode 保留、inode 核对、单次 `rename` 和父目录同步替换已有文件；15 个 XCTest 覆盖 ENOSPC、短写/EINTR、权限、sync/close/rename、提交后错误、符号链接、字节保留及四类路径竞争；独立进程验证 7 个 SIGKILL 阶段；region 87.04%、line 94.88%，iOS 26 arm64 交叉编译通过 |
+| M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 完成 | App Domain 冻结已解码/百分号路径双入口、NFC 身份、只解码一次和 Codable 重校验；纯 `SyncPlanner` 区分 tracked/initialImport/conservativeRecovery，破坏性计划携带 CAS，缺失可靠写前置条件永不 upload；强 ETag 从完整响应头解析，内容身份与写保护条件分离；错误恢复动作由 11 类错误唯一派生，诊断仅白名单结构字段；22 个 host XCTest 通过，region 98.89%、line 99.44%，Xcode test bundle 与 iOS 26 arm64 交叉编译通过 |
 | M0-11 | 选择首个认证服务 | 真实 WebDAV 测试目标 | 未开始 | 尚无决策记录 |
 | M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 未开始 | 尚无 ADR 文件 |
 

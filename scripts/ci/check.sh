@@ -6,6 +6,7 @@ source "$(dirname "$0")/common.sh"
 assert_xcode_version
 
 xcrun swift-format lint --strict --recursive \
+    "$ROOT_DIR/Package.swift" \
     "$ROOT_DIR/BearObs" \
     "$ROOT_DIR/BearObsTests" \
     "$ROOT_DIR/BearObsUITests" \

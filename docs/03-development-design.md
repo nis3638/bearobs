@@ -190,13 +190,19 @@ Application Support/BearObs/
 
 职责：
 
-- 保存规范化、百分号解码后的 Vault 相对路径；
-- 统一路径分隔符；
+- 用 `init(decodedRelativePath:)` 接受本地已解码路径，用
+  `init(percentEncodedRelativePath:)` 接受 WebDAV 相对编码路径；两种入口禁止混用；
+- 百分号输入严格按 UTF-8 只解码一次，字面 `%` 再编码为 `%25`；
+- Unicode 身份只做 NFC，区分大小写，不做兼容分解或大小写折叠；
+- 唯一分隔符是 `/`；反斜杠直接拒绝，禁止把普通 POSIX 文件名静默改成路径层级；
 - 提供父目录、扩展名和文件名；
-- 拒绝目录穿越和非法 Unicode 规范化结果；
+- 拒绝空路径、绝对路径、空段、NUL、`.`、`..`，以及百分号解码后才形成的分隔符、
+  反斜杠或目录穿越；
 - 作为 MVP 文件身份。
 
-不得在各模块重复手写字符串拼接和路径校验。
+`VaultPath` 不实现 `RawRepresentable`、字符串字面量或完整 URL 初始化器，避免绕过校验。
+Codable 解码必须重新走同一校验入口。WebDAV origin/根路径剥离和 symlink-safe containment
+属于适配器与 `LocalVaultStore`，不得塞进这个纯值。各模块不得重复手写字符串拼接和校验。
 
 ### 6.2 Note
 
@@ -232,23 +238,20 @@ Application Support/BearObs/
 
 | 字段 | 说明 |
 |---|---|
-| `path` | Vault 相对路径 |
-| `baseLocalHash` | 上次成功同步后的本地内容 hash |
-| `remoteETag` | 上次成功同步的 ETag，可空 |
-| `remoteLastModified` | 远端时间，仅作辅助 |
-| `remoteSize` | 远端大小 |
-| `lastSyncedAt` | 最近成功提交基线的时间 |
-| `entryState` | synced、localModified、pendingDownload、pendingUpload、conflict |
+| `localHash` | 上次成功同步后的本地内容 hash |
+| `remoteRevision` | 上次成功同步的可靠远端 revision，可空；弱 ETag、Last-Modified 和 size 不得冒充 |
 
-基线提交只能发生在文件操作和远端 validator 都确认成功之后。
+路径是持久层记录的 key，不能同时塞进 baseline value 形成两个事实来源。运行状态与 action
+ledger 也不属于基线事实。基线提交只能发生在文件操作和远端 validator 都确认成功之后。
 
 ### 6.5 SyncDecision
 
-同步规划器只接受值，不执行 I/O：
+同步规划器只接受不可变值，不执行 I/O。上下文显式区分三种状态，禁止用 `baseline == nil`
+同时表示首次导入和账本丢失：
 
 ```text
 plan(
-  baseline: SyncBaseline?,
+  context: tracked(SyncBaselineState) | initialImport | conservativeRecovery,
   local: LocalResourceState,
   remote: RemoteResourceState
 ) -> SyncDecision
@@ -260,11 +263,25 @@ plan(
 - download；
 - upload；
 - removeLocal；
+- establishBaseline；
 - conflict；
 - unsupported；
 - needsConservativeRecovery。
 
-这个函数必须使用表驱动测试穷举状态组合。
+内容 hash 是规范化 SHA-256 hex。`RemoteRevision` 只能由适配器基于已认证的可靠证据构造；
+写前置条件与 revision 分开表达，revision 相等性只比较内容身份，写入时使用当前快照的保护
+条件。`StrongETag` 必须解析完整单值响应头并拒绝弱 ETag、列表和通配符，再生成 `If-Match`；
+没有经过认证的强条件时，即使能检测远端未变，也禁止产生 upload。若远端声称 revision 未变，
+但同时提供与基线矛盾的已验证内容 hash，视为不可验证冲突，禁止 noAction 或 upload。
+
+所有可能破坏数据的计划必须携带执行前条件：download 携带 expected-local 与已观察 remote
+revision，upload 携带 expected-local-hash 和远端写前置条件，removeLocal 携带
+expected-local-hash。执行器发现条件变化时必须停止并重新规划。
+
+无基线时的本地/远端四格为：缺/缺 noAction，缺/有 download，首次导入的有/缺
+unsupported(localCreation)，恢复态的有/缺 needsConservativeRecovery；有/有必须先证明内容
+hash 相同才能 establishBaseline，不同则 conflict，未知则保守恢复。tracked 3×5 与保守恢复
+3×4 必须用表驱动测试逐格锁定精确结果。
 
 ### 6.6 Conflict
 
@@ -681,6 +698,15 @@ sequenceDiagram
 | cancelled | 用户取消 | 保留已提交进度 |
 
 错误必须保留底层诊断用于本地调试，但用户文案不泄露凭据或正文。
+
+冻结约束：
+
+- 恢复动作由错误类别唯一派生，不作为独立可写字段，禁止构造“认证失败却提示清理磁盘”；
+- 用户文案只暴露稳定 message key，不拼接 HTTP status、POSIX code 或底层描述；
+- 底层诊断只允许 operation、subsystem、numeric code、correlation ID 四类白名单字段；
+- 禁止保存任意 `localizedDescription`、完整 URL、header、用户名、密码、响应正文或笔记内容；
+- `conflict` 是正常同步决策；执行阶段的 412/validator 失配再映射为 conflict 类失败，不能
+  自动降级成无条件重试。
 
 ## 15. 恢复设计
 

@@ -33,6 +33,12 @@ jobs:
       - name: Verify Markdown spike
         run: ./scripts/spikes/verify-markdown.sh
 
+      - name: Verify atomic write spike
+        run: ./scripts/spikes/verify-atomic-write.sh
+
+      - name: Verify frozen domain model
+        run: ./scripts/domain/verify-domain-model.sh
+
       - name: Build Debug and Release
         run: ./scripts/ci/build.sh
 

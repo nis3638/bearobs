@@ -1,4 +1,4 @@
-.PHONY: build test coverage check ci spike-grdb spike-markdown clean
+.PHONY: build test coverage check ci spike-grdb spike-markdown spike-atomic-write domain-model clean
 
 build:
 	./scripts/ci/build.sh
@@ -20,6 +20,12 @@ spike-grdb:
 
 spike-markdown:
 	./scripts/spikes/verify-markdown.sh
+
+spike-atomic-write:
+	./scripts/spikes/verify-atomic-write.sh
+
+domain-model:
+	./scripts/domain/verify-domain-model.sh
 
 clean:
 	rm -rf .build

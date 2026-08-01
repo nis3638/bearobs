@@ -1,10 +1,10 @@
-# BearObs M0-01～M0-08 工程基线
+# BearObs M0-01～M0-10 工程基线
 
 ## 范围
 
 本基线只覆盖独立 Git 边界、iOS 26+ SwiftUI 工程、测试 targets、CI、依赖与配置管理、
-M0-05 Golden Vault、M0-06 可控 WebDAV fixture、M0-07 GRDB/FTS5 Spike，以及 M0-08 Markdown
-Spike。项目 Git 根目录固定为
+M0-05 Golden Vault、M0-06 可控 WebDAV fixture、M0-07 GRDB/FTS5 Spike、M0-08 Markdown
+Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目录固定为
 `/Users/ivows/workspace/bearobs`，默认分支为 `main`；父目录仓库不再承载 BearObs 历史。
 本文件不代表完整 M0 完成，也不实现 Vault、生产 Markdown parser、索引、生产 WebDAV 客户端
 或同步业务。
@@ -26,6 +26,8 @@ make test       # Unit Test + UI Test
 make coverage   # Unit Test coverage，输出到 .build/reports/
 make spike-grdb # GRDB/FTS5 测试、覆盖率门禁和 iOS 26 交叉编译
 make spike-markdown # Markdown 测试、覆盖率门禁和 iOS 26 交叉编译
+make spike-atomic-write # 原子替换、SIGKILL、覆盖率和 iOS 26 交叉编译
+make domain-model # 领域模型 host XCTest、覆盖率和 iOS 26 交叉编译
 make ci         # 与 CI 相同的完整顺序
 ```
 
@@ -118,6 +120,51 @@ NFR-03 验收。`unicode61` 只确认大小写、音调符号和连续中文短�
 iPhone 的 NFR。`diagnosticHTML` 是依赖输出的未清洗诊断值，禁止进入 WebView 或作为可信 HTML；
 M1 Reader 必须建立原生渲染边界。Spike 不解析链接目标路径、不决定同名链接、不写回 YAML，
 也不冻结 M1 的领域模型。生产入口还必须加入文件大小/YAML 复杂度上限。
+
+## M0-09 Atomic Write Spike
+
+- 隔离包位于 `Spikes/M009AtomicWrite`，无第三方依赖，不链接 App target；
+- 只替换已有 regular file，拒绝缺失目标、目录、符号链接和非文件 URL；
+- 打开稳定父目录 descriptor，在其内以 `O_CREAT | O_EXCL | O_NOFOLLOW` 创建 sibling staging，
+  完整写入、保留 POSIX rwx mode、`fsync` 并关闭后，核对 staging/目标 inode，再用单次
+  `rename` 提交、同步父目录并重读校验；清理同样按 inode 约束，降低误删同名替换文件风险；
+- 提交前 ENOSPC、permission、file sync、close 和 rename 失败均保留完整旧文件；目录同步
+  失败报告耐久性未确认，目录已同步后的重读失败则明确报告已持久化但校验失败；
+- Writer 只处理 `Data`，BOM、LF/CRLF、混合换行、空文件和任意非 UTF-8 字节逐字节保留；
+- 15 个 XCTest 通过，覆盖短写/EINTR 和 destination、staging、父路径、发布后 FIFO 竞争；
+  library region coverage 87.04%、line coverage 94.88%；Xcode 26 未为 Swift-only target 生成 branch
+  records，因此临时以 region ≥ 80% 加显式故障/分支矩阵门禁，不能把 `0/0` 冒充 branch
+  coverage 通过；独立子进程在 7 个 staging/publish 边界接受 SIGKILL 后，父进程只观察到
+  完整旧版或完整新版；
+- arm64 iOS 26 Release 交叉编译通过。
+
+SIGKILL 只证明进程终止，不冒充物理断电测试。Spike 不承诺 ACL、extended attributes、
+ownership、iOS Data Protection、祖先目录 symlink、Vault containment 或 expected-hash/CAS；
+inode 核对只是 best-effort，`fstatat -> renameat/unlinkat` 仍有非原子 check/use 窗口，不等于
+内容级并发控制；M3 必须用 Vault actor、文件协调、expected hash 和恢复策略闭合。崩溃残留
+staging 没有 action ledger 时不得自动提升。
+
+## M0-10 Domain Model
+
+- 生产源码位于 `BearObs/Domain` 并直接进入 App target；仓库根 `Package.swift` 只是复用同一
+  源码和 XCTest 的 macOS host verification 接缝，不产生第二份实现或 App 运行时依赖；
+- `VaultPath` 区分本地已解码和远端百分号编码入口，严格只解码一次，执行 NFC，拒绝绝对
+  路径、空段、`.`、`..`、NUL、反斜杠及解码后穿越，Codable 不能绕过校验；
+- `SyncPlanner` 显式区分 tracked、initialImport、conservativeRecovery；无可靠远端 revision
+  或写前置条件时绝不上传，download/upload/removeLocal 均携带执行前 CAS；强 ETag 从完整
+  单值响应头解析，远端内容身份与当前写保护条件分别建模；
+- 无基线且双方存在时，只有已验证内容 hash 相同才建立基线，不同则冲突，未知则保守恢复；
+- 相同 revision 却带来与基线矛盾的已验证 hash 时强制冲突；tracked 3×5 与恢复 3×4 决策矩阵
+  逐格断言精确结果；
+- 11 类统一错误各自唯一映射恢复动作；诊断只允许 operation、subsystem、numeric code 和
+  correlation ID，不接受 URL、header、底层描述或正文；
+- 22 个 host XCTest 全部通过，覆盖路径编码/Unicode/穿越、同步矩阵、账本恢复、CAS 和错误
+  映射；Domain region coverage 98.89%、line coverage 99.44%，Xcode test bundle 编译和
+  arm64 iOS 26 Release 交叉编译通过。
+
+本地未安装 Simulator runtime 时，`make domain-model` 仍执行同一组纯领域 XCTest；完整 App
+`make test` 继续要求 CI 或开发机安装与 `.xcode-version` 匹配的 iOS runtime。M0-10 不实现
+WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲突副本生命周期。
 
 ## 依赖与配置
 

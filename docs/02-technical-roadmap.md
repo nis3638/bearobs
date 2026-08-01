@@ -127,6 +127,14 @@ flowchart TD
 - M0-08 已验证并精确锁定 `swift-markdown` 0.8.0 与 Yams 6.2.2：标准 Markdown AST、
   `SourceRange`、只读 Frontmatter、Obsidian 扩展扫描、诊断渲染和 iOS 26 交叉编译均通过；
   正式 parser、链接解析和原生 Reader 仍由 M1-A2～M1-A5、M1-C4 建立。
+- M0-09 已验证已有文件的 POSIX 原子替换：稳定父目录 descriptor、同目录 exclusive staging、
+  完整写入、`fsync`、mode 保留、inode 核对、单次 `rename`、父目录同步和重读校验；提交前、
+  提交后未确认耐久性、已持久化但校验失败必须使用不同状态，正式 VaultPath、内容级并发
+  前置条件和编辑编排仍由 M0-10、M3 建立。
+- M0-10 已冻结第一版纯领域契约：`VaultPath` 区分已解码路径与只解码一次的远端编码路径，
+  `SyncPlanner` 区分已跟踪、首次导入和保守恢复，所有下载、上传和本地移除计划携带执行前
+  CAS 条件；强 ETag 从完整响应头解析，弱、列表、通配符或缺失写前置条件绝不产生 upload；
+  远端内容身份与当前写保护条件分离，统一错误只保存白名单结构诊断。
 
 不在路线中引入：
 
