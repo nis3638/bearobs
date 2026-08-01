@@ -15,6 +15,9 @@ xcrun swift-format lint --strict --recursive \
     "$ROOT_DIR/Spikes/M008Markdown/Package.swift" \
     "$ROOT_DIR/Spikes/M008Markdown/Sources" \
     "$ROOT_DIR/Spikes/M008Markdown/Tests" \
+    "$ROOT_DIR/Spikes/M009AtomicWrite/Package.swift" \
+    "$ROOT_DIR/Spikes/M009AtomicWrite/Sources" \
+    "$ROOT_DIR/Spikes/M009AtomicWrite/Tests" \
     "$ROOT_DIR/scripts/fixtures/generate-golden-vault-assets.swift" \
     "$ROOT_DIR/scripts/fixtures/verify-golden-vault.swift" \
     "$ROOT_DIR/scripts/fixtures/verify-webdav-behavior.swift" \

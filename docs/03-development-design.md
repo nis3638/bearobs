@@ -180,7 +180,8 @@ Application Support/BearObs/
 - 所有 Vault 路径在进入文件系统前转换为 `VaultPath`。
 - `VaultPath` 只允许规范化相对路径。
 - 拒绝空路径段、绝对路径、NUL、`.`、`..` 和规范化后越界。
-- Staging 文件与目标文件必须在支持原子替换的同一卷。
+- 本地编辑的临时文件必须是目标同目录的唯一 sibling staging，确保单次 `rename` 原子发布；
+  顶层 `Staging/` 用于下载等长生命周期 action，不作为本地编辑的跨目录临时文件。
 - 冲突目录不属于普通缓存清理范围。
 
 ## 6. 核心领域模型
@@ -478,7 +479,7 @@ FTS5 字段：
 
 1. 校验目标仍在 Vault 根目录；
 2. 编码为 UTF-8，尽量保留 BOM 和换行风格；
-3. 写入 Staging；
+3. 在目标同目录写入唯一 sibling staging；
 4. flush 并关闭文件；
 5. 原子替换目标；
 6. 重新读取并计算 hash；
@@ -798,6 +799,9 @@ WebDAV 测试矩阵至少覆盖：
 
 - Domain、Markdown、Vault、Sync、WebDAV 安全边界行覆盖率不低于 80%；
 - 同一范围分支覆盖率不低于 80%；
+- Xcode 26 对纯 Swift target 若没有生成 branch records（`llvm-cov` 显示 Branches 为 0），
+  不得把 `0/0` 冒充分支门禁通过；临时使用 region coverage ≥ 80% 加显式表驱动分支/故障
+  矩阵，任何实际生成 branch records 的 target 仍执行分支覆盖率 ≥ 80%；
 - 生成代码和纯布局代码不用于稀释分母；
 - 覆盖率不是替代故障注入和契约测试的数字游戏。
 
