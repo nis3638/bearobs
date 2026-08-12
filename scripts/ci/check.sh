@@ -19,10 +19,17 @@ xcrun swift-format lint --strict --recursive \
     "$ROOT_DIR/Spikes/M009AtomicWrite/Package.swift" \
     "$ROOT_DIR/Spikes/M009AtomicWrite/Sources" \
     "$ROOT_DIR/Spikes/M009AtomicWrite/Tests" \
+    "$ROOT_DIR/Tools/JianguoyunWebDAVVerifier/Package.swift" \
+    "$ROOT_DIR/Tools/JianguoyunWebDAVVerifier/Sources" \
+    "$ROOT_DIR/Tools/JianguoyunWebDAVVerifier/Tests" \
     "$ROOT_DIR/scripts/fixtures/generate-golden-vault-assets.swift" \
     "$ROOT_DIR/scripts/fixtures/verify-golden-vault.swift" \
     "$ROOT_DIR/scripts/fixtures/verify-webdav-behavior.swift" \
     "$ROOT_DIR/scripts/fixtures/verify-webdav-fixture.swift"
+
+xcrun swift test \
+    --package-path "$ROOT_DIR/Tools/JianguoyunWebDAVVerifier" \
+    --disable-automatic-resolution
 
 xcrun swift \
     -module-cache-path "$ROOT_DIR/.build/SwiftModuleCache" \

@@ -22,6 +22,11 @@
 		B0A0000000000000000000B4 /* VaultPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C4 /* VaultPath.swift */; };
 		B0A0000000000000000000B5 /* SyncPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C5 /* SyncPlanner.swift */; };
 		B0A0000000000000000000B6 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C6 /* AppError.swift */; };
+		B0A0000000000000000000E1 /* LocalVaultEnumeratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F1 /* LocalVaultEnumeratorTests.swift */; };
+		B0A0000000000000000000E2 /* LocalVaultEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F2 /* LocalVaultEnumerator.swift */; };
+		B0A0000000000000000000E3 /* FrontmatterParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F3 /* FrontmatterParserTests.swift */; };
+		B0A0000000000000000000E4 /* FrontmatterParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F4 /* FrontmatterParser.swift */; };
+		B0A0000000000000000000E5 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = B0A0000000000000000000B8 /* Yams */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,10 +72,14 @@
 		B0A0000000000000000000C4 /* VaultPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultPath.swift; sourceTree = "<group>"; };
 		B0A0000000000000000000C5 /* SyncPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncPlanner.swift; sourceTree = "<group>"; };
 		B0A0000000000000000000C6 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000F1 /* LocalVaultEnumeratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVaultEnumeratorTests.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000F2 /* LocalVaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVaultEnumerator.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000F3 /* FrontmatterParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParserTests.swift; sourceTree = "<group>"; };
+		B0A0000000000000000000F4 /* FrontmatterParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParser.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		B0A000000000000000000050 /* App Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000050 /* App Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (B0A0000000000000000000E5 /* Yams in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000051 /* Unit Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000052 /* UI Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
@@ -93,6 +102,8 @@
 			children = (
 				B0A000000000000000000036 /* App */,
 				B0A0000000000000000000D2 /* Domain */,
+				B0A0000000000000000000D5 /* Infrastructure */,
+				B0A0000000000000000000D9 /* Markdown */,
 			);
 			path = BearObs;
 			sourceTree = "<group>";
@@ -110,6 +121,8 @@
 			isa = PBXGroup;
 			children = (
 				B0A0000000000000000000D1 /* Domain */,
+				B0A0000000000000000000D3 /* Infrastructure */,
+				B0A0000000000000000000D7 /* Markdown */,
 				B0A000000000000000000013 /* BearObsTests.swift */,
 				B0A00000000000000000001E /* GoldenVaultContractTests.swift */,
 				B0A000000000000000000020 /* WebDAVFixtureContractTests.swift */,
@@ -138,6 +151,70 @@
 				B0A0000000000000000000C6 /* AppError.swift */,
 			);
 			path = Domain;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D3 /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000D4 /* LocalVault */,
+			);
+			path = Infrastructure;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D4 /* LocalVault */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000F1 /* LocalVaultEnumeratorTests.swift */,
+			);
+			path = LocalVault;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D5 /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000D6 /* LocalVault */,
+			);
+			path = Infrastructure;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D6 /* LocalVault */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000F2 /* LocalVaultEnumerator.swift */,
+			);
+			path = LocalVault;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D7 /* Markdown */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000D8 /* Frontmatter */,
+			);
+			path = Markdown;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D8 /* Frontmatter */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000F3 /* FrontmatterParserTests.swift */,
+			);
+			path = Frontmatter;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000D9 /* Markdown */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000DA /* Frontmatter */,
+			);
+			path = Markdown;
+			sourceTree = "<group>";
+		};
+		B0A0000000000000000000DA /* Frontmatter */ = {
+			isa = PBXGroup;
+			children = (
+				B0A0000000000000000000F4 /* FrontmatterParser.swift */,
+			);
+			path = Frontmatter;
 			sourceTree = "<group>";
 		};
 		B0A000000000000000000033 /* BearObsUITests */ = {isa = PBXGroup; children = (B0A000000000000000000014 /* BearObsUITests.swift */); path = BearObsUITests; sourceTree = "<group>"; };
@@ -174,6 +251,9 @@
 			buildRules = ();
 			dependencies = ();
 			name = BearObs;
+			packageProductDependencies = (
+				B0A0000000000000000000B8 /* Yams */,
+			);
 			productName = BearObs;
 			productReference = B0A000000000000000000010 /* BearObs.app */;
 			productType = "com.apple.product-type.application";
@@ -221,6 +301,9 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (en, Base);
 			mainGroup = B0A000000000000000000030;
+			packageReferences = (
+				B0A0000000000000000000B7 /* XCRemoteSwiftPackageReference "Yams" */,
+			);
 			productRefGroup = B0A000000000000000000035 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -235,8 +318,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */, B0A0000000000000000000B4 /* VaultPath.swift in Sources */, B0A0000000000000000000B5 /* SyncPlanner.swift in Sources */, B0A0000000000000000000B6 /* AppError.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */, B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */, B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */, B0A0000000000000000000B1 /* VaultPathTests.swift in Sources */, B0A0000000000000000000B2 /* SyncPlannerTests.swift in Sources */, B0A0000000000000000000B3 /* AppErrorTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */, B0A0000000000000000000B4 /* VaultPath.swift in Sources */, B0A0000000000000000000B5 /* SyncPlanner.swift in Sources */, B0A0000000000000000000B6 /* AppError.swift in Sources */, B0A0000000000000000000E2 /* LocalVaultEnumerator.swift in Sources */, B0A0000000000000000000E4 /* FrontmatterParser.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */, B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */, B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */, B0A0000000000000000000B1 /* VaultPathTests.swift in Sources */, B0A0000000000000000000B2 /* SyncPlannerTests.swift in Sources */, B0A0000000000000000000B3 /* AppErrorTests.swift in Sources */, B0A0000000000000000000E1 /* LocalVaultEnumeratorTests.swift in Sources */, B0A0000000000000000000E3 /* FrontmatterParserTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000062 /* UI Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000004 /* BearObsUITests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
@@ -244,6 +327,25 @@
 		B0A000000000000000000023 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B0A000000000000000000040 /* BearObs */; targetProxy = B0A000000000000000000021 /* PBXContainerItemProxy */; };
 		B0A000000000000000000024 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B0A000000000000000000040 /* BearObs */; targetProxy = B0A000000000000000000022 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B0A0000000000000000000B7 /* XCRemoteSwiftPackageReference "Yams" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jpsim/Yams.git";
+			requirement = {
+				kind = exactVersion;
+				version = 6.2.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B0A0000000000000000000B8 /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0A0000000000000000000B7 /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B0A000000000000000000080 /* Project Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A000000000000000000018 /* Debug.xcconfig */; buildSettings = {SDKROOT = iphoneos; ENABLE_TESTABILITY = YES;}; name = Debug; };

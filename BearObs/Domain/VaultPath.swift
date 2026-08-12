@@ -1,6 +1,6 @@
 import Foundation
 
-struct VaultPath: Hashable, Comparable, Codable, Sendable,
+public struct VaultPath: Hashable, Comparable, Codable, Sendable,
     CustomStringConvertible
 {
     enum ValidationError: Error, Equatable, Sendable {
@@ -15,11 +15,11 @@ struct VaultPath: Hashable, Comparable, Codable, Sendable,
 
     private let canonicalValue: String
 
-    init(decodedRelativePath: String) throws {
+    public init(decodedRelativePath: String) throws {
         canonicalValue = try Self.validate(decodedRelativePath)
     }
 
-    init(percentEncodedRelativePath: String) throws {
+    public init(percentEncodedRelativePath: String) throws {
         let encodedParts = percentEncodedRelativePath.split(
             separator: "/",
             omittingEmptySubsequences: false
@@ -28,7 +28,7 @@ struct VaultPath: Hashable, Comparable, Codable, Sendable,
         canonicalValue = try Self.validate(decodedParts.joined(separator: "/"))
     }
 
-    var description: String { canonicalValue }
+    public var description: String { canonicalValue }
 
     var components: [String] {
         canonicalValue.split(separator: "/").map(String.init)
@@ -60,16 +60,16 @@ struct VaultPath: Hashable, Comparable, Codable, Sendable,
         components.map(Self.encodeComponent).joined(separator: "/")
     }
 
-    static func < (lhs: VaultPath, rhs: VaultPath) -> Bool {
+    public static func < (lhs: VaultPath, rhs: VaultPath) -> Bool {
         lhs.canonicalValue < rhs.canonicalValue
     }
 
-    init(from decoder: any Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         try self.init(decodedRelativePath: container.decode(String.self))
     }
 
-    func encode(to encoder: any Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(canonicalValue)
     }

@@ -1,9 +1,9 @@
 # BearObs 开发计划
 
 > 文档状态：执行中（计划基线已确认）
-> 版本：1.1
+> 版本：1.2
 > 基线日期：2026-07-28
-> 最近状态更新：2026-08-01
+> 最近状态更新：2026-08-12
 > 上游文档：[产品需求](01-product-requirements.md) · [技术路线](02-technical-roadmap.md) · [开发设计](03-development-design.md)
 
 ## 1. 计划目标
@@ -42,8 +42,8 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 
 | 里程碑 | 目标 | 预计工作量 | 发布形态 | 执行状态 |
 |---|---|---:|---|---|
-| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 进行中：11/12 工作项完成 |
-| M1 | 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 未开始 |
+| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 完成：11 项完成，M0-11 移交 M2-A6 |
+| M1 | 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 进行中 |
 | M2 | WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 未开始 |
 | M3 | 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 未开始 |
 | M4 | 冲突与发布加固 | 2-3 工程师周 | 对外 MVP | 未开始 |
@@ -54,12 +54,12 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 
 | 项目 | 当前状态 |
 |---|---|
-| 当前里程碑 | M0：工程与风险基线 |
-| 当前进行中 | M0-11 坚果云真实服务认证 |
-| 最近完成 | M0-10：冻结 VaultPath、SyncDecision、CAS 计划和错误模型 |
-| 下一计划项 | M0-11：坚果云真实服务认证 |
-| 退出阻塞 | M0-11 尚未完成 |
-| 里程碑验收 | 未开始；必须完成 M0-11 及 5.4 全部退出条件 |
+| 当前里程碑 | M1：本地只读纵切 |
+| 当前进行中 | 无；M1-A2 刚完成，尚未启动下一工作项 |
+| 最近完成 | M1-A2：Frontmatter 只读解析 |
+| 下一计划项 | M1-A3：只实现标准 Markdown AST，不混入标签扫描或 UI |
+| 退出阻塞 | 无；坚果云真实认证和分页协议不阻塞 M1 |
+| 里程碑验收 | M0 已按调整后的 5.4 退出；M1 验收尚未开始 |
 
 状态含义：
 
@@ -120,8 +120,49 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 完成 | 隔离 SwiftPM Spike 锁定 swift-markdown 0.8.0 与 Yams 6.2.2；14 个 XCTest 覆盖 AST、只读 Frontmatter、标签/链接/Embed 排除与转义、Golden Vault 契约预期、无效 UTF-8、BOM/换行和性能；源码行覆盖率 93.74%，iOS 26 arm64 交叉编译通过 |
 | M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 完成 | 隔离 SwiftPM Spike 以稳定父目录 descriptor、同目录 exclusive staging、`fsync`、mode 保留、inode 核对、单次 `rename` 和父目录同步替换已有文件；15 个 XCTest 覆盖 ENOSPC、短写/EINTR、权限、sync/close/rename、提交后错误、符号链接、字节保留及四类路径竞争；独立进程验证 7 个 SIGKILL 阶段；region 87.04%、line 94.88%，iOS 26 arm64 交叉编译通过 |
 | M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 完成 | App Domain 冻结已解码/百分号路径双入口、NFC 身份、只解码一次和 Codable 重校验；纯 `SyncPlanner` 区分 tracked/initialImport/conservativeRecovery，破坏性计划携带 CAS，缺失可靠写前置条件永不 upload；强 ETag 从完整响应头解析，内容身份与写保护条件分离；错误恢复动作由 11 类错误唯一派生，诊断仅白名单结构字段；22 个 host XCTest 通过，region 98.89%、line 99.44%，Xcode test bundle 与 iOS 26 arm64 交叉编译通过 |
-| M0-11 | 认证首个服务 | 坚果云真实 WebDAV 测试目标 | 进行中 | 已选坚果云；官方 WebDAV 地址、应用密码和服务限制已记录，缺少专用账号、应用密码和认证证据 |
-| M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 完成 | ADR-001～007 已写入；ADR-006 已接受服务选择，但坚果云认证能力仍由 M0-11 验证 |
+| M0-11 | 认证首个服务 | 坚果云真实 WebDAV 本机人工验证 | 延期（移交 M2-A6） | 验证工具及安全边界已经建立，117 个离线 XCTest 通过；真实验证未执行，分页协议未文档化。该缺口不再阻塞 M0/M1，但任何真实服务发布和远端写仍受其约束 |
+| M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 完成 | ADR-001～007 已写入；ADR-006 已接受服务选择，坚果云认证能力完整移交 M2-A6 |
+
+### 5.2.1 M0-11 移交 M2-A6：本机一次性人工验证流程
+
+M0-11 不按“完成”处理，而是完整移交 M2-A6；这项顺序调整只解除其对本地只读 M1 的阻塞，
+不降低任何远端能力的安全门槛。该流程仅供 macOS 本机人工显式触发。真实坚果云访问不得进入 CI、XCTest、定时任务或常规
+`check`/`test` 目标。固定 endpoint 为 `https://dav.jianguoyun.com/dav/`，凭据只存入 macOS
+Keychain：service 固定为 `com.bearobs.m0-11.jianguoyun`，account 固定为 `credentials-v1`。
+用户名和第三方应用密码放入版本化 `kSecValueData`，真实用户名不得进入 Keychain 元数据。
+当前一次性 SwiftPM CLI 使用当前用户的登录钥匙串；所有操作固定到同一 Keychain 实现，不与
+Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like bundle 时必须另起 ADR。
+
+人工流程和边界：
+
+1. 人工创建专用空目录和 BearObs 专用第三方应用密码；禁止使用真实 Vault，禁止开启终端录制、
+   HAR 或 HTTP 代理抓包。
+2. 通过 `store-credentials` 交互输入用户名和关闭回显的应用密码。用户名、密码和专用目录禁止
+   通过 argv、环境变量、配置文件或 stdin 重定向传递，也不得进入 Shell 历史、日志、报告、
+   artifact 或 Git。重复 Keychain 条目必须人工确认后才能替换。
+3. 通过 `verify` 交互输入专用目录。先用独立 ephemeral session 验证未认证 Depth 0
+   `PROPFIND` 返回 `401`，再响应固定 origin 的 Basic/Digest challenge，验证 Depth 0/1 `207`。
+   工具必须先证明目录为空；非空或边界不明时零写入退出。
+4. 只创建本次运行登记的合成 Markdown，覆盖 Unicode、空格和字面 `%` 路径，并验证 GET 字节、
+   强 ETag、匹配 ETag 条件 PUT、旧 ETag 的条件 PUT/DELETE 均返回 `412`，且两次 `412` 后远端
+   正文和当前强 ETag 不变。
+5. mutation 前记录 intent；条件 DELETE 探针通过后，成功或失败都只按本次清单和刚证明的当前
+   强 ETag 逐项 DELETE 并确认消失。禁止递归删除专用根，
+   禁止扫描后批量删除，禁止删除未由当前运行登记的资源。崩溃恢复账本必须在仓库外以 `0700`
+   目录和 `0600` 文件保存，并区分“仅登记”与“已验证条件 DELETE、允许清理”状态；探针通过前
+   崩溃时只允许读取确认资源不存在，登记资源仍存在或状态不一致时停止自动删除并转人工复核。
+6. 仅接受系统默认 TLS 信任和正确主机名，拒绝所有 HTTP redirect；跨 origin、HTTPS 降级、
+   越出 `/dav/` 或专用根、带 userinfo/query 的 URL，以及越界 PROPFIND `href` 一律失败且不得携带
+   凭据。
+7. 报告只允许 case、`PASS`/`FAIL`/`BLOCKED`/`UNAVAILABLE`、HTTP 状态码、固定原因码、时间戳、
+   工具版本、ETag 类别、字节/hash 结果和清理状态；不得包含 URL、用户名、密码、目录、对象名、
+   认证 challenge/realm、正文、原始 ETag、Keychain 查询、HAR、截图或终端录制。需要时通过
+   `delete-credentials` 删除固定 Keychain 条目。
+
+坚果云没有文档化超过 750 条目的分页协议。不得臆造厂商私有 API，也不得发出 751 次 PUT 制造
+数据；该项固定报告 `BLOCKED vendor-pagination-protocol-undocumented`。真实人工执行与脱敏证据审查
+完成前，M2-A6 保持 `NO-GO`；即使其余 case 通过，分页仍为 `BLOCKED` 时也不得发布坚果云 profile
+或开放远端写。它不阻塞 M1；取得厂商协议证据或通过新 ADR 调整服务能力边界后再关闭。
 
 ### 5.3 Golden Vault 内容
 
@@ -148,7 +189,7 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 - 路径越界测试通过；
 - 原子替换故障测试通过；
 - GRDB、Markdown 和 FTS Spike 有明确结论；
-- 首个真实 WebDAV 认证服务已选定；
+- 首个真实 WebDAV 认证服务已选定，验证工具和安全边界已有离线证据；真实服务验证明确移交 M2-A6，完成前不暴露任何远端能力；
 - 没有进入业务实现的未决致命架构问题。
 
 ## 6. M1：本地只读纵切
@@ -159,13 +200,13 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 
 ### 6.2 工作流 A：Vault 与解析
 
-| ID | 工作项 | 依赖 |
-|---|---|---|
-| M1-A1 | 实现 VaultPath 和本地枚举 | M0-10 |
-| M1-A2 | 实现 Frontmatter 只读解析 | M0-08 |
-| M1-A3 | 实现标准 Markdown AST | M0-08 |
-| M1-A4 | 实现标签、Wiki Link 和 Embed 扫描 | M1-A2、M1-A3 |
-| M1-A5 | 实现标题、摘要和解析诊断 | M1-A4 |
+| ID | 工作项 | 依赖 | 状态 | 证据或缺口 |
+|---|---|---|---|---|
+| M1-A1 | 实现 VaultPath 和本地枚举 | M0-10 | 完成 | `LocalVaultEnumerator` 使用 descriptor-relative `openat`、`fstatat` 和 `O_NOFOLLOW` 流式递归；排除保留目录和非 Markdown，跳过文件/目录符号链接，NFC `VaultPath` 确定排序；6 个 XCTest 覆盖 Golden Vault 272 个 Markdown、Unicode/空格/字面 `%`、根边界和 visitor 失败；region 86.15%、line 92.31%，SwiftPM 28 测试与 iOS Simulator `build-for-testing` 通过 |
+| M1-A2 | 实现 Frontmatter 只读解析 | M0-08 | 完成 | 独立 `BearObsMarkdown` 模块锁定 Yams 6.2.2；按原始 `Data` 识别精确分隔线、UTF-8 BOM、LF/CRLF，输出正文 byte range；只读取 YAML `title` 与字符串/数组 `tags`，无效 YAML 和未闭合 Frontmatter 返回固定结构化诊断且正文仍可读；7 个 XCTest 覆盖 Golden Vault、空/缺失 Frontmatter、无效 UTF-8和字节不改写；SwiftPM 全量 35 测试通过，parser region 88.64%、line 96.46%，Xcode iOS Simulator SDK 下 App、Yams 与 Unit Test targets 编译链接通过 |
+| M1-A3 | 实现标准 Markdown AST | M0-08 | 下一步 | 尚未开始；不得在本项混入标签/Wiki Link/Embed 业务扫描或 UI |
+| M1-A4 | 实现标签、Wiki Link 和 Embed 扫描 | M1-A2、M1-A3 | 未开始 | — |
+| M1-A5 | 实现标题、摘要和解析诊断 | M1-A4 | 未开始 | — |
 
 ### 6.3 工作流 B：索引与搜索
 
@@ -441,11 +482,14 @@ flowchart LR
 | 数据库集成 | XCTest + 临时 DB | 是 | 是 | 是 |
 | 文件系统集成 | XCTest + 临时目录 | 是 | 是 | 是 |
 | WebDAV 契约 | 本地 fixture | 是 | 是 | 是 |
-| 真实服务认证 | 隔离测试 Vault | 否 | 是 | 是 |
+| 真实服务认证 | macOS 本机人工工具 + 专用空目录 | 否 | 阶段人工 | 发布前人工 |
 | UI 关键流 | XCUITest | 冒烟 | 是 | 是 |
 | 性能 | XCTest metrics | 基准子集 | 是 | 是 |
 | 故障注入 | 自定义适配器 | 关键子集 | 是 | 是 |
 | 安全与依赖 | 静态检查/人工评审 | 是 | 是 | 是 |
+
+真实服务认证行中的“阶段人工”不是自动化门：必须由开发者在本机显式触发，且不得读取 CI secret、
+环境变量或自动执行。其输出仅保留 ADR-006 定义的脱敏能力矩阵。
 
 ## 13. 需求追踪
 
@@ -472,6 +516,8 @@ flowchart LR
 | 大 Vault 卡顿 | 中 | 高 | 流式枚举、增量索引、有界并发和缓存 | M1/M4 |
 | iOS 后台不可靠 | 高 | 中 | 前台确定触发，后台仅优化 | M2 |
 | 路径穿越或 URL 编码错误 | 中 | 极高 | 单一 VaultPath、同源和根目录校验 | M0/M2 |
+| 真实验证凭据或路径泄漏 | 低 | 极高 | 固定 Keychain 条目、仅交互输入、严格脱敏、禁止 argv/env/抓包 | M0/M2 |
+| 坚果云分页协议未文档化 | 高 | 高 | 不阻塞本地 M1；不臆造私有 API，能力矩阵明确 `BLOCKED`，取得厂商证据或新 ADR 前不发布坚果云 profile | M2 |
 | 账本损坏 | 低 | 极高 | 与索引隔离、保守重建、恢复演练 | M2/M4 |
 | 范围膨胀 | 高 | 中 | M5 隔离、阶段退出门 | 全程 |
 | Bear 品牌相似 | 低 | 高 | 只借鉴交互，不复制资产 | M1/M4 |
@@ -507,7 +553,7 @@ flowchart LR
 ### 安全与隐私
 
 - [ ] 只允许 HTTPS 和系统信任证书
-- [ ] 凭据只在 Keychain
+- [ ] 凭据只在 Keychain；M0-11 工具固定 service/account，禁止 argv/env/日志
 - [ ] 路径穿越测试通过
 - [ ] 日志无正文和凭据
 - [ ] Critical/High 为 0
@@ -531,10 +577,12 @@ flowchart LR
 
 ## 17. 当前下一步
 
-当前只关闭 M0 的最后一项，不直接开始完整功能开发：
+当前按单个可验收工作项推进 M1，不并行铺开完整功能：
 
-1. 创建坚果云专用测试账号、空目录和第三方应用密码；
-2. 在可信 HTTPS 下完成 ADR-006 的真实服务认证矩阵；
-3. 复核 M0 退出条件后进入 M1。
+1. M1-A2 已完成并通过独立门禁，不再扩充 YAML 字段、Markdown AST、标签扫描、全文改写或 UI；
+2. 下一步执行 M1-A3：基于 M0-08 已验证版本只建立标准 Markdown AST 契约；
+3. Frontmatter 只向 M1-A3 提供原始正文 byte range；AST 层不得重新猜测 Frontmatter 边界或改写原始字节；
+4. M1-A3 通过 RED、GREEN、VERIFY、REVIEW 后，再单独进入 M1-A4 的标签、Wiki Link 和 Embed 扫描；
+5. 坚果云验证工具保留，但不在 M1 期间主动执行。进入 M2 后由 M2-A6 接管真实认证、脱敏报告和分页决策。
 
-这一步看似慢，实际上是最短路径。跳过它只会把未知风险推迟到用户数据已经可以被写坏的时候。
+每一步都必须单独完成 RED、GREEN、VERIFY、REVIEW。未通过当前工作项，不提前堆叠下一层概念。
