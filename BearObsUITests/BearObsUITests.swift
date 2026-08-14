@@ -6,10 +6,12 @@ final class BearObsUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testProjectShellLaunches() {
+    func testLibraryEmptyStateLaunches() {
         let application = XCUIApplication()
         application.launch()
 
-        XCTAssertTrue(application.staticTexts["project-shell-title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            application.descendants(matching: .any)["library-empty"].waitForExistence(timeout: 5)
+        )
     }
 }

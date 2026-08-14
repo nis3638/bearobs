@@ -1,13 +1,13 @@
 import Foundation
 
-struct ContentHash: Hashable, Codable, Sendable {
-    enum ValidationError: Error, Equatable, Sendable {
+public struct ContentHash: Hashable, Codable, Sendable {
+    public enum ValidationError: Error, Equatable, Sendable {
         case invalidSHA256Hex
     }
 
-    let hex: String
+    public let hex: String
 
-    init(hex: String) throws {
+    public init(hex: String) throws {
         let canonical = hex.lowercased()
         guard canonical.utf8.count == 64,
             canonical.utf8.allSatisfy(Self.isHexDigit)
@@ -17,12 +17,12 @@ struct ContentHash: Hashable, Codable, Sendable {
         self.hex = canonical
     }
 
-    init(from decoder: any Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         try self.init(hex: container.decode(String.self))
     }
 
-    func encode(to encoder: any Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(hex)
     }

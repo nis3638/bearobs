@@ -45,6 +45,16 @@ public struct VaultPath: Hashable, Comparable, Codable, Sendable,
         components.last!
     }
 
+    public var fileNameWithoutExtension: String {
+        guard
+            let dot = lastComponent.lastIndex(of: "."),
+            dot != lastComponent.startIndex
+        else {
+            return lastComponent
+        }
+        return String(lastComponent[..<dot])
+    }
+
     var pathExtension: String? {
         guard
             let dot = lastComponent.lastIndex(of: "."),

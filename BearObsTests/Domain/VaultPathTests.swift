@@ -101,6 +101,8 @@ final class VaultPathTests: XCTestCase {
         XCTAssertEqual(path.parent?.description, "Notes")
         XCTAssertEqual(path.lastComponent, "a.test.md")
         XCTAssertEqual(path.pathExtension, "md")
+        XCTAssertEqual(path.fileNameWithoutExtension, "a.test")
+        XCTAssertEqual(hidden.fileNameWithoutExtension, ".gitignore")
         XCTAssertEqual(
             try VaultPath(
                 decodedRelativePath: "Unicode/空 格%计划.md"

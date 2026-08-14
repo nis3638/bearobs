@@ -395,6 +395,7 @@ MVP 不暴露远端删除和移动接口，避免未使用能力进入写路径�
 
 - `note_path` 外键到 notes，删除级联；
 - `tag_name` 外键到 tags；
+- `display_name` 保留该笔记中的原始展示形式，供删除或替换后确定性重算全局标签展示名；
 - 复合主键避免重复。
 
 #### links
@@ -403,7 +404,7 @@ MVP 不暴露远端删除和移动接口，避免未使用能力进入写路径�
 - `raw_target`；
 - `alias`；
 - `resolved_path` 可空；
-- `resolution_state` 为 resolved、missing 或 ambiguous。
+- `resolution_state` 为 unresolved、resolved、missing 或 ambiguous；解析前不得把未知目标伪装成 missing。
 
 #### attachments
 
@@ -421,7 +422,17 @@ FTS5 字段：
 - body；
 - tags。
 
+#### note_diagnostics
+
+- `note_path` 外键到 notes，删除级联；
+- `code` 只保存固定结构化解析诊断码，不保存正文或任意错误文本；
+- 复合主键避免同一笔记重复诊断。
+
 初始 tokenizer 使用 `unicode61`。中文搜索质量必须用真实语料验收，不能因为“能查到几个词”就宣布完成。
+
+M1 实测后增加 `note_cjk_fts`：英文等非汉字内容仍由 `unicode61` 处理，连续汉字额外生成
+unigram 与相邻 bigram，并在纯汉字查询时使用 phrase 匹配守住相邻关系。该表仍是可重建派生数据，
+与普通 FTS、关系表在同一事务更新。
 
 ### 8.2 `sync.sqlite`
 
@@ -648,6 +659,9 @@ sequenceDiagram
 - 返回短摘要，不加载全部匹配正文到内存；
 - 空查询走最近笔记查询；
 - 查询取消随用户输入更新传播。
+- 5 篇中文语料的 6 个正向自然查询中，裸 `unicode61` 召回 2/6；汉字 unigram+bigram FTS
+  召回 6/6。加入 2 个负向组合查询后候选策略完整满足 8/8 期望结果且无测得误匹配；10,000 篇
+  合成笔记查询 P95 0.808 毫秒，FTS 页占用约为普通表的 3.44 倍。详见 ADR-008。
 
 ## 13. UI 与状态设计
 
@@ -678,6 +692,67 @@ sequenceDiagram
 - 图标按钮使用 SF Symbols 并提供辅助功能标签；
 - 支持 Dynamic Type、VoiceOver 和深色模式；
 - 不复制 Bear 的商标、图标或专有视觉。
+
+### 13.4 Library 只读切片
+
+- `IndexRepository` 只返回 path、title、preview、modifiedAt 和 parseStatus 组成的不可变摘要，
+  默认按 modifiedAt 倒序、path 二进制顺序稳定排列；
+- `LibraryDataSource` 是应用层端口，分别封装本地摘要读取和索引刷新；Feature Model 与 SwiftUI
+  不导入 GRDB，也不持有 SQLite 连接；
+- Library 状态是 loading、indexing、content、empty、failure 的互斥枚举，不使用多个布尔值拼出
+  不可能状态；刷新失败保留已经可读的本地列表，任意底层错误只映射到固定用户文案；
+- 同时发生的加载或刷新以最后发起的 operation 为准，较慢的旧结果不得覆盖新状态；
+- 列表状态条是唯一强调元素，标题、摘要和相对修改时间保持原生信息密度；降级或失败同时使用
+  图标和文字，不只依赖颜色。C1 先建立这些结构，完整 VoiceOver、Dynamic Type 和深色模式矩阵
+  仍由 M1-C7 验收。
+
+### 13.5 标签导航切片
+
+- 标签列表直接从 `tags` 与 `note_tags` 聚合 normalized identity、确定性 display name 和 note
+  count，不建立第二套标签状态或把 occurrence 在 UI 内重新去重；
+- 选择标签时只把仓储返回的 `IndexedTagSummary` 传回仓储，SQL 使用参数绑定精确匹配 normalized
+  identity；结果复用 Library 的摘要结构和 modifiedAt/path 稳定排序；
+- 标签列表与标签笔记页分别拥有互斥状态。刷新失败继续显示上次标签并明确提示，取消恢复旧状态，
+  后发请求阻止旧结果覆盖；
+- App 顶层使用原生 TabView 提供“笔记”“标签”和“搜索”三个入口。Reader 跳转仍等待 C4，
+  不在标签行或搜索结果行里直接读取 Markdown。
+
+### 13.6 搜索切片
+
+- `SearchDataSource` 是应用层的单一查询端口，Feature Model 和 SwiftUI 不导入 GRDB、不持有
+  SQLite 连接，也不重新实现分词、排序或查询上限；
+- 空查询复用仓储的最近笔记语义，非空查询复用普通/CJK 双 FTS；结果只携带 path、title、preview、
+  modifiedAt 和闭合 parse status，不加载正文；
+- 搜索状态为 loading、content、empty、failure 的互斥枚举。每次查询分配 operation ID，较慢的
+  旧查询即使晚返回也不能覆盖新结果，取消恢复上一个稳定状态；底层错误统一映射为固定文案；
+- SwiftUI 使用 `.task(id: query)` 把输入变化传播为结构化取消，并用原生 searchable、List 和
+  ContentUnavailableView 表达最近笔记、结果、空态与失败。结果打开 Reader 留给 M1-C4。
+
+### 13.7 Markdown Reader 切片
+
+- Reader 通过 `ReaderDataSource` 按 `VaultPath` 读取工作副本。`LocalReaderDataSource` 在独立 actor
+  上调用 descriptor-relative `LocalVaultStore`，再复用统一 `MarkdownNoteParser`，不在主线程、
+  View 或索引摘要上重新解析正文；
+- AST 先转换为闭合、不可变、Sendable 的 block/inline 渲染模型，覆盖标题、段落、强调、粗体、
+  删除线、列表、任务列表、引用、代码和标准链接。HTML、未知节点与尚未解析跳转的 Obsidian
+  语法只显示为文本，绝不执行；
+- 只有无凭据的 HTTP、HTTPS 和有效 mailto 可成为外部链接动作；自定义 scheme、相对目标和含
+  user/password 的 URL 降级为不可点击标签，避免把 Vault 内容变成任意系统动作入口；
+- Reader 状态为 loading、content、failure，operation ID 阻止旧读取覆盖新结果，取消恢复旧内容。
+  Library、Tags 和 Search 只传规范路径并共享同一 Reader 端口。
+
+### 13.8 Wiki Link 跳转切片
+
+- 增量扫描或全量重建完成后，索引在单次批处理中建立笔记路径目录，并按 9.4 的固定优先级更新
+  每个 Wiki Link occurrence 的 `resolved_path` 与 `resolution_state`；不会在逐篇 replace 时反复扫描
+  全表，也不会在 Reader View 中临时猜路径；
+- Reader 只按原笔记 UTF-8 byte range 合并 parser occurrence 与索引解析结果。范围、源码或状态不一致
+  时降级为普通文本，防止重复同名 occurrence 串位；
+- 只有 `resolved` 状态可生成内部 `bearobs://note` 路由。路由仅承载已验证的 `VaultPath`，严格拒绝
+  用户信息、端口、额外 query、fragment、绝对路径、反斜杠和 traversal；`missing`、`ambiguous` 与
+  `unresolved` 均保留可读标签但不可点击；
+- Library、Tags、Search 和 Wiki Link 递归跳转共享同一个 `ReaderDataSource`。附件 Embed 仍按安全
+  文本显示，附件缓存与存在性解析是独立后续切片，不混入 C5。
 
 ## 14. 错误模型
 

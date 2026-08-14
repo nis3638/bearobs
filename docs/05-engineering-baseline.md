@@ -6,8 +6,8 @@
 M0-05 Golden Vault、M0-06 可控 WebDAV fixture、M0-07 GRDB/FTS5 Spike、M0-08 Markdown
 Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目录固定为
 `/Users/ivows/workspace/bearobs`，默认分支为 `main`；父目录仓库不再承载 BearObs 历史。
-本文件不代表完整 M0 完成，也不实现 Vault、生产 Markdown parser、索引、生产 WebDAV 客户端
-或同步业务。
+本文件也持续记录已完成的 M1 生产边界证据，但不代表完整 M1 完成；当前仍不实现生产 WebDAV
+客户端、同步执行器或远端写业务。
 
 ## 工程约束
 
@@ -166,14 +166,158 @@ staging 没有 action ledger 时不得自动提升。
 `make test` 继续要求 CI 或开发机安装与 `.xcode-version` 匹配的 iOS runtime。M0-10 不实现
 WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲突副本生命周期。
 
+## M1 Markdown 生产解析边界
+
+- `BearObsMarkdown` 正式使用 `FrontmatterParseResult.bodyRange` 作为唯一正文边界；标准 AST 和
+  Obsidian 扩展扫描不重复猜测 Frontmatter，也不改写原始字节；
+- `ObsidianSyntaxScanner` 通过 AST UTF-8 source range 遮罩代码、标准链接目标、图片与 HTML，
+  仅恢复标准链接的可见文本；排除范围无法安全映射时返回空扩展结果，禁止 fail-open 误索引；
+- Inline Tag、Wiki Link 与 Embed 以 occurrence 建模，保留原始 source 和原笔记绝对 UTF-8
+  半开 byte range；扫描保持线性，未闭合或跨行 bracket token 原文降级；
+- `MarkdownNoteParser` 是唯一公开生产解析入口，输入为原始 `Data` 与已验证的 `VaultPath`；默认
+  在 UTF-8/YAML/AST 分配前拒绝超过 1 MiB 的 note，并集中管理 64 KiB Frontmatter、2,048
+  YAML nodes、32 层 YAML 深度、128 个 aliases、1,024 个 Frontmatter tags、10,000 个扩展
+  语法 occurrence、4 KiB 单 token、1,024 个唯一标签和 200 个摘要 Character 的上限；
+- Frontmatter byte cap 与 libyaml event 级 depth/node/alias 预算在 `Yams.compose` 前生效，预算
+  直接消费真实 YAML events 并可在 Node 构造前中止；构树后仍以真实 Node 结构复核 node/depth。
+  低层 Frontmatter、AST 和扩展扫描入口只保留模块内部可见性，外部调用者不能绕过统一限制；
+- 标题事实源固定为非空 Frontmatter title、正文首个顶层 ATX H1、`VaultPath` 文件名 stem；摘要
+  取标题后的首个顶层语义 Paragraph，保留可见文本并跳过 heading、image、code、HTML 与
+  Embed，折叠空白后按 extended grapheme cluster 截断且不添加 UI 省略号；
+- 标签按 Frontmatter 顺序再按 Inline Tag 源码顺序聚合；display 采用 NFC，identity 采用固定
+  `en_US_POSIX` locale 的 Unicode case-insensitive folding 后再 NFC，首次形式获胜。聚合不得
+  删除、重排或重算 A4 occurrence 及绝对 UTF-8 byte range；
+- invalid/unclosed/resource-limited Frontmatter、extension range 与输出截断进入固定结构化
+  diagnostic 并得到 `degraded`；超 note 大小和 invalid UTF-8 是 typed fatal error，不伪造
+  部分 `ParsedNote`；
+- M1-A5 新增 22 个 XCTest，SwiftPM 全量 77 测试通过；`MarkdownNoteParser.swift` region
+  88.17%、line 95.08%，相关生产文件总 region 92.81%、line 96.53%。Xcode 26 未生成 Swift
+  branch records，因此继续使用 region ≥ 80% 加显式分支矩阵；`make check` 与 iOS 26 Release
+  交叉编译通过。本机未安装 Simulator runtime，Xcode scheme 的最终 build/test 重跑仍属于上文
+  已记录的基础设施缺口；
+- 扫描和聚合层仍不做路径解析、同名消歧、附件存在性、HTML 渲染或智能摘要；这些能力必须由
+  后续索引、跳转和 Reader 消费层承担。
+
+## M1 `index.sqlite` 生产迁移边界
+
+- 正式 `BearObsIndex` 模块精确锁定 GRDB 7.11.1；统一数据库配置开启 SQLite foreign keys，
+  避免调用者忘记连接级开关后让 schema 的级联约束静默失效；
+- `v1_create_index_tables` 建立 notes、tags、note_tags、links 和 attachments：路径和标签身份为
+  主键，关联表使用复合主键，笔记删除级联清理所有 occurrence；内容 hash、byte size、解析状态、
+  link resolution、attachment cache state 和 UTF-8 半开 range 均由 CHECK 约束守住；
+- Wiki Link 与 Embed 使用自增 occurrence ID，并以 note path 加 source start 唯一定位；同一 target
+  在不同源码位置可重复存在，禁止在 schema 层错误去重或丢失 A4 的语法事实；
+- `v2_create_note_fts` 建立 path、title、body、tags 四列 FTS5 表，path 不参与分词，tokenizer 固定
+  为 `unicode61`；从 v1 升级时按稳定标签顺序回填已有 notes，重复打开不会重复创建或插入；
+- B1 不实现 B2 的 upsert/delete 事务、B3 的 hash skip、B4 查询排序或 B6 中文质量决策；FTS 正文
+  的持续更新仍必须由 B2 在与普通表相同的事务中完成；
+- 7 个 XCTest 覆盖新库建表、真实磁盘重开幂等、v1→v2 `unicode61` 回填、v2 失败不误记、外键
+  级联、非法状态/range 拒绝和重复 target occurrence 保真；`IndexSchema.swift` region/line 均为
+  100%，SwiftPM 全量 84 测试、`make check` 和 arm64 iOS 26 Release 交叉编译通过；
+- Xcode 已成功解析并锁定 GRDB，App 与 Unit Test targets 均完成项目接线。本机未安装可用的 iOS
+  26.5 runtime/platform destination，因此 scheme build/test 无法启动；该环境缺口不影响上述 host
+  测试和 iOS SDK 交叉编译证据。
+
+## M1 `index.sqlite` 生产索引与搜索边界
+
+- 单笔记写入、失败降级、删除、普通 FTS 与中文 FTS 必须处于同一 SQLite 事务；任何 occurrence
+  约束失败都回滚整篇笔记，禁止留下新 notes 配旧 FTS 的撕裂状态；
+- `v5_create_note_diagnostics` 保存固定结构化诊断码；degraded 与 fatal 解析结果都保留诊断，但
+  不保存任意错误文本、堆栈或额外正文；
+- 本地读取继续使用 descriptor-relative `openat`、`O_NOFOLLOW` 和稳定读取前后 `fstat`，读取时
+  流式计算 SHA-256；超过解析上限的内容只保留 hash 和安全文件名，不把整份超限正文留在内存；
+- 增量扫描先比较 path、size、mtime，再对可疑项比较 hash；hash 不变只刷新文件属性，删除项仅在
+  完整枚举成功后清理，避免一次根目录读取失败被误判成“全部删除”；
+- 查询长度上限 256 字符、limit 为 1...100，用户内容只通过参数绑定进入 SQL；普通 FTS 的 bm25
+  权重固定为 title 10、tags 5、body 1，空查询按 modified_at 倒序；
+- `v3_upgrade_occurrence_metadata` 兼容升级已经执行过 B1 的数据库，重建 note_tags/links 并保留
+  旧 occurrence；`v4_create_cjk_note_fts` 从普通 FTS 流式回填汉字 unigram+bigram。中文语料
+  6 个正向查询的召回率由裸 `unicode61` 的 2/6 提升为 6/6；2 个负向组合查询无测得误匹配。
+  10,000 篇合成笔记查询 P95 0.808 毫秒，中文 FTS 页占用为普通 FTS 的 3.44 倍；纯汉字查询
+  使用 phrase 匹配，防止相邻 bigram 分散命中的假阳性。完整决策见 ADR-008；
+- 全量重建在单个写事务内逐篇读取、解析和插入，峰值内存按单篇 note 上限有界。注入 rebuild
+  trigger 失败时旧 notes、occurrence 和双 FTS 保持完整可用；重建永不修改 `sync.sqlite`、
+  Markdown 字节或用户状态；
+- M1-B2 至 B6 共新增 24 个索引/文件读取测试；SwiftPM 全量 108 测试通过，全量生产源码
+  region 92.44%、line 96.83%；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+
+## M1-C1 Library 只读边界
+
+- `IndexLibraryRepository` 只暴露不可变 `IndexedNoteSummary`，稳定按修改时间倒序和 path 排序；
+  parse status 在仓储边界转换为闭合枚举，UI 不接触 GRDB row 或任意诊断文本；
+- `LibraryDataSource` 分离读取和刷新端口；`LibraryFeatureModel` 仅拥有互斥界面状态与用户意图，
+  刷新失败保留旧列表，取消恢复稳定状态，后发 operation 阻止慢的旧结果覆盖新内容；
+- SwiftUI Library 使用原生 NavigationStack、List 和 ContentUnavailableView，展示标题、摘要、
+  相对修改时间以及带图标和文字的降级/失败状态；加载、索引、空态和错误都有独立可访问标识；
+- C1 新增 7 个仓储/Feature Model 测试，SwiftPM 全量 115 测试通过；包含声明式 SwiftUI View 的
+  全量生产源码 region 86.31%、line 89.05%，排除纯布局后的核心逻辑 region 92.13%、line 96.87%。
+  App 壳纳入独立 SwiftPM executable target，host 编译与 arm64 iOS 26 Release 交叉编译通过；本机
+  缺 iOS 26.5 platform component，Xcode generic device build 在编译前被 destination 检查阻断，
+  未把该基础设施缺口记为源码通过。
+
+## M1-C2 标签导航边界
+
+- `IndexTagRepository` 在 index.sqlite 内聚合标签稳定展示名和 note count，按标签读取继续返回
+  `IndexedNoteSummary`，使用参数绑定并复用 modifiedAt/path 稳定排序；
+- 标签列表和标签笔记页各自使用闭合状态枚举。刷新失败保留旧标签并显示固定提示，取消恢复旧状态，
+  operation ID 阻止慢的旧查询覆盖新结果；UI 不重新解析标签，也不直接读取 Markdown；
+- App 壳使用原生 TabView 暴露“笔记”和“标签”，按标签进入 NavigationStack 子页；状态不只依赖
+  颜色，空态和错误均提供明确文字；
+- C2 新增 7 个仓储/Feature Model 测试，SwiftPM 全量 122 测试通过；包含两个声明式 SwiftUI View
+  的全量生产源码 region 83.77%、line 85.66%，排除纯布局后的核心逻辑 region 92.00%、line
+  96.95%；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+
+## M1-C3 搜索和摘要边界
+
+- `SearchDataSource` 只暴露一个异步查询端口；Feature Model 与 SwiftUI 不接触 GRDB、SQLite 或
+  FTS 语法，空查询和普通/CJK 查询继续复用 B4/B6 已验证的仓储语义；
+- 搜索结果只包含不可变摘要和闭合 parse status，不加载 Markdown 正文。loading、content、empty、
+  failure 为互斥状态，operation ID 阻止旧查询覆盖新输入，结构化取消恢复上一个稳定状态；
+- App 壳新增原生 Search Tab，使用 searchable、List 和 ContentUnavailableView；底层错误不透传，
+  降级状态同时使用文字和图标。结果打开 Reader 明确保留给 C4；
+- C3 新增 3 个 Feature Model 测试，SwiftPM 全量 125 测试通过；全量生产源码 region 81.86%、line
+  83.27%，排除三个纯声明式 SwiftUI View 后核心逻辑 region 91.77%、line 96.91%，Search Feature
+  Model line 97.14%；10,000 篇中文合成语料本轮查询 P95 0.831 毫秒；arm64 iOS 26 Release
+  交叉编译通过。
+
+## M1-C4 Markdown Reader 边界
+
+- `ReaderDataSource.localVault` 按规范 `VaultPath` 调用现有 descriptor-relative 文件读取，并在独立
+  actor 上完成稳定读取、统一 Markdown 解析和渲染模型转换；View 不读取 SQLite 或文件字节；
+- `MarkdownRenderDocument` 是闭合、不可变、Sendable 的 block/inline 值，覆盖标题、段落、强调、
+  粗体、删除线、列表、任务列表、引用、行内/块代码和标准链接；HTML、未知节点及尚未进入 C5
+  的 Obsidian 跳转语法只显示为文本；
+- 仅无凭据的 HTTP/HTTPS 和有效 mailto 保留点击动作；自定义 scheme、相对目标和含 user/password
+  的 URL 降级为不可点击文本。Reader 底层失败不透传，取消恢复稳定内容，旧加载不能覆盖新结果；
+- Library、Tags、Search 三个入口均按 path 导航到 Reader；C4 新增 6 个渲染、状态、真实本地适配
+  和 SwiftUI 离屏渲染测试，SwiftPM 全量 132 测试通过；全量生产源码 region 80.81%、line 81.56%，
+  排除四个纯声明式 View 后核心逻辑 region 90.46%、line 96.47%；10,000 篇中文检索本轮 P95
+  0.806 毫秒；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+
+## M1-C5 Wiki Link 跳转边界
+
+- `IndexWikiLinkRepository` 在一次扫描或重建结束后，以当前 notes 路径集合批量解析所有 link
+  occurrence；顺序固定为显式 Vault 路径、源笔记目录、Vault 根和唯一文件名。同名多候选标记
+  ambiguous，缺失和非法 target 标记 missing，任何状态都不在 View 层重新猜测；
+- 解析状态和 `resolved_path` 使用参数绑定写回 SQLite。逐篇 replace 只写 unresolved occurrence，
+  避免首次扫描形成逐篇全表归一的平方级写放大；
+- Reader 使用原笔记绝对 UTF-8 半开 range 合并 scanner occurrence 与索引结果；范围或源文本不一致
+  时保留原文。resolved link 只携带已验证 `VaultPath`，missing、ambiguous、unresolved 只显示别名或
+  target，不创建动作；
+- 内部路由严格限定 `bearobs://note?path=...` 的单一形状，拒绝凭据、端口、额外参数、fragment
+  和所有不合法 Vault path；普通 HTTP/HTTPS/mailto 仍遵守 C4 的外部链接白名单；
+- C5 新增 7 个仓储、渲染、路由和真实扫描到 Reader 集成测试，SwiftPM 全量 139 测试通过；全量
+  生产源码 region 81.20%、line 82.56%；10,000 篇中文检索本轮 P95 0.836 毫秒；`make check`、
+  Xcode 工程解析、pbxproj 校验和 arm64 iOS 26 Release 交叉编译通过。本机仍无可用 iOS Simulator
+  runtime，因此没有伪报模拟器测试。
+
 ## 依赖与配置
 
-- 当前 App target 第三方运行时依赖：无；隔离 Spike 的开发依赖为 GRDB 7.11.1、
-  swift-markdown 0.8.0 和 Yams 6.2.2。
+- 当前 App target 第三方运行时依赖为 GRDB 7.11.1、swift-markdown 0.8.0、Yams 6.2.2，
+  以及 swift-markdown 传递依赖 swift-cmark 0.8.0。
 - 格式检查使用 Xcode 工具链自带的 `swift-format`，版本随 Xcode 26.5 一并锁定。
 - 后续 Swift Package 必须使用稳定版本约束并提交 `Package.resolved`；禁止 branch 依赖。
-- GRDB、swift-markdown 和 Yams 已由 M0 Spike 锁定，但在 M1 建立正式索引和 parser 边界前
-  不链接 App target。
+- swift-markdown、Yams 和 GRDB 已分别在 M1 正式 parser 与索引边界链接 App target。
 - `Config/Secrets.xcconfig`、`.env*` 和构建产物被忽略。源码和普通配置不得存放凭据。
 - WebDAV 凭据未来只进入 Keychain；CI 凭据只进入 CI secret store。
 - 零依赖静态检查覆盖常见云端、GitHub、Slack、OpenAI、私钥和认证头模式，并同时扫描

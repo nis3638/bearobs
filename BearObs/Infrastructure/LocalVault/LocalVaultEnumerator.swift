@@ -61,6 +61,7 @@ struct LocalVaultEnumerator {
         visit: (VaultPath) throws -> Void
     ) throws {
         for name in try entryNames(in: descriptor) {
+            try Task.checkCancellation()
             let entryComponents = components + [name]
             switch try classify(name, in: descriptor, components: entryComponents) {
             case .ignored:
@@ -113,6 +114,7 @@ struct LocalVaultEnumerator {
 
         var names: [String] = []
         while true {
+            try Task.checkCancellation()
             errno = 0
             guard let entry = readdir(directory) else {
                 guard errno == 0 else {
