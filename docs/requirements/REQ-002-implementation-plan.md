@@ -407,6 +407,39 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 
 退出条件：现有 `EditorFeatureModelTests` 全部不降级，新状态测试全绿，保存 API 和错误文案保持兼容。
 
+#### P2 执行记录（2026-09-29）
+
+1. 会话身份：`EditorFeatureModel` 新增只读 `sessionID`（UUID，init 创建）。App 侧每次进入
+   编辑态新建模型实例、切换/放弃时销毁，模型实例即会话，会话生而绑定 `path`、不重绑
+   （对应 6.2/6.4）。`EditorProjectionEngine.scheduleParse` 改为携带 session，发布前同时
+   校验 session 与 revision；会话切换取消未决解析、清空旧投影并重置 revision 空间——旧
+   会话的解析结果无法发布进新会话，旧投影不会残留在新笔记下。
+2. 快照值类型：按 4.3 新增 `EditorSelection`（anchor/head，UTF-8）、`EditorViewport`
+   （utf8Anchor + verticalOffset）、`EditorDraftSnapshot`（text/revision/selection/
+   viewport）。模型分别存储 `selection`/`viewport`，`draftSnapshot` 每次读取现组新值，
+   任何修改都产生新值，后台任务不持有可变集合；`NSRange`→UTF-8 转换仍留在 AppKit 适配层
+   （P3），模型只做字节范围钳制。与计划的差异：revision 用 `Int` 与现有 `draftRevision`
+   对齐，未改用 `UInt64`。
+3. 视图状态语义：`updateSelection`/`updateViewport` 更新视图快照；`publish`（载入）重置
+   selection/viewport；`adoptSavedDocument`（保存完成）不触碰 selection/viewport。
+4. 保存完成语义（6.4）：只更新 baseline；仅当草稿字节仍等于保存前文本时才采纳归一化的
+   `document.text`（并加等值检查避免空写），保存期间新输入产生的高 revision 草稿、
+   selection、viewport 不被覆盖；保存返回的新 `sourceSnapshot` 触发以当前草稿为准的重投影
+   （revision +1），旧快照上的未决解析被取代。保存失败路径不改 draft 与快照。
+5. marked text 守卫（6.3）：新增 `isMarkedTextActive` 与 `setMarkedTextActive(_:)`；激活
+   期间保存完成不回写 draft（含等值写），组合输入期间模型绝不把旧字符串推回视图。
+6. 测试：`EditorFeatureModelTests` 6 → 12。新增：保存期间新输入保持 dirty 且完成后不被
+   覆盖；保存失败保留 draft/selection/viewport（快照级断言）；marked text 期间经
+   `withObservationTracking` 证明 draft 无写入事件；保存完成采纳规范化文本且 selection/
+   viewport 保留、新快照触发重投影（记录器断言解析文本与快照）；引擎会话切换丢弃旧会话
+   结果并清空旧投影；共享数据源上两个会话互不污染（覆盖"旧笔记 projection/save 不能污染
+   新笔记"）。`makeModel` 支持注入 save 闭包；另清理 `ParseGate` 同步访问处残留的无效
+   `await`（在 xcodebuild 编译设置下按错误处理）。
+7. 门禁：SwiftPM 全量 288 测试通过；xcodebuild 测试计划 320 测试（含 2 条 UI 冒烟）通过；
+   `make build` Debug/Release 通过；`make check`（swift-format lint --strict、Golden/
+   WebDAV 固定装置、密钥扫描）通过。`EditorDataSource` load/save 语义与错误分类未变，
+   保存 API 和错误文案保持兼容。
+
 ### P3：接入单一 AppKit 编辑表面
 
 实现 `SourcePreservingTextView` 和 coordinator，先只完成：

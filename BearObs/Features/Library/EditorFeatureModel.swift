@@ -97,9 +97,65 @@ public enum EditorViewState: Equatable, Sendable {
     case saving
 }
 
+/// Insertion/selection state in UTF-8 offsets relative to the draft text.
+/// `anchor` is the fixed end, `head` the moving end; an insertion point is
+/// `anchor == head`. The AppKit adapter converts its `NSRange` to
+/// scalar-aligned UTF-8 offsets before calling into the model; the model only
+/// clamps to the draft's byte range.
+public struct EditorSelection: Equatable, Sendable {
+    public let anchorUTF8: Int
+    public let headUTF8: Int
+
+    public init(anchorUTF8: Int, headUTF8: Int) {
+        self.anchorUTF8 = anchorUTF8
+        self.headUTF8 = headUTF8
+    }
+}
+
+/// Visible-position state in UTF-8 offsets relative to the draft text. The
+/// AppKit adapter owns pixel geometry; the model only carries the anchor.
+public struct EditorViewport: Equatable, Sendable {
+    public let utf8Anchor: Int
+    public let verticalOffset: Double
+
+    public init(utf8Anchor: Int, verticalOffset: Double) {
+        self.utf8Anchor = utf8Anchor
+        self.verticalOffset = verticalOffset
+    }
+}
+
+/// Immutable snapshot of everything an editor session restores: the draft
+/// text, the revision it belongs to, and the selection/viewport state. Every
+/// mutation creates a new value; nothing background can hold a mutable
+/// collection of editor state (REQ-002 4.3).
+public struct EditorDraftSnapshot: Equatable, Sendable {
+    public let text: String
+    public let revision: Int
+    public let selection: EditorSelection
+    public let viewport: EditorViewport
+
+    public init(
+        text: String,
+        revision: Int,
+        selection: EditorSelection,
+        viewport: EditorViewport
+    ) {
+        self.text = text
+        self.revision = revision
+        self.selection = selection
+        self.viewport = viewport
+    }
+}
+
 @MainActor
 @Observable
 public final class EditorFeatureModel {
+    /// One model instance is one editor session: the app creates the model
+    /// when the user enters edit mode for `path` and destroys it on switch or
+    /// discard, so the session identity is born bound to that path and is
+    /// never rebound (REQ-002 6.2/6.4). Async parse results are tagged with
+    /// this identity so a superseded session's parse can never publish.
+    public let sessionID = UUID()
     public let path: VaultPath
     public private(set) var draft = ""
     public private(set) var baselineContentHash: ContentHash?
@@ -107,6 +163,12 @@ public final class EditorFeatureModel {
     public private(set) var sourceSnapshot: MarkdownSourceSnapshot?
     public private(set) var state: EditorViewState = .idle
     public private(set) var failure: EditorFailure?
+    public private(set) var selection = EditorSelection(anchorUTF8: 0, headUTF8: 0)
+    public private(set) var viewport = EditorViewport(utf8Anchor: 0, verticalOffset: 0)
+    /// True while an input method holds marked (composition) text. The model
+    /// must not push any string back out during this window: the view's text
+    /// storage holds composition state the draft string cannot represent.
+    public private(set) var isMarkedTextActive = false
 
     private let source: EditorDataSource
     private var baselineBytes = Data()
@@ -114,6 +176,17 @@ public final class EditorFeatureModel {
 
     public private(set) var draftRevision = 0
     public let projectionEngine: EditorProjectionEngine
+
+    /// Composed fresh on every read, so callers get a value snapshot without
+    /// the model ever exposing shared mutable state.
+    public var draftSnapshot: EditorDraftSnapshot {
+        EditorDraftSnapshot(
+            text: draft,
+            revision: draftRevision,
+            selection: selection,
+            viewport: viewport
+        )
+    }
 
     public init(
         path: VaultPath,
@@ -151,10 +224,31 @@ public final class EditorFeatureModel {
         draft = text
         draftRevision += 1
         projectionEngine.scheduleParse(
+            session: sessionID,
             revision: draftRevision,
             text: text,
             snapshot: sourceSnapshot
         )
+    }
+
+    public func updateSelection(anchorUTF8: Int, headUTF8: Int) {
+        let limit = draft.utf8.count
+        selection = EditorSelection(
+            anchorUTF8: min(max(0, anchorUTF8), limit),
+            headUTF8: min(max(0, headUTF8), limit)
+        )
+    }
+
+    public func updateViewport(utf8Anchor: Int, verticalOffset: Double) {
+        let limit = draft.utf8.count
+        viewport = EditorViewport(
+            utf8Anchor: min(max(0, utf8Anchor), limit),
+            verticalOffset: verticalOffset
+        )
+    }
+
+    public func setMarkedTextActive(_ active: Bool) {
+        isMarkedTextActive = active
     }
 
     public func dismissFailure() {
@@ -241,6 +335,7 @@ public final class EditorFeatureModel {
     private func publish(_ document: EditorDocument) {
         draftRevision += 1
         projectionEngine.scheduleParse(
+            session: sessionID,
             revision: draftRevision,
             text: document.text,
             snapshot: document.sourceSnapshot
@@ -250,19 +345,40 @@ public final class EditorFeatureModel {
         baselineContentHash = document.contentHash
         sourceInfo = document.sourceInfo
         sourceSnapshot = document.sourceSnapshot
+        selection = EditorSelection(anchorUTF8: 0, headUTF8: 0)
+        viewport = EditorViewport(utf8Anchor: 0, verticalOffset: 0)
     }
 
     private func adoptSavedDocument(
         _ document: EditorDocument,
         savedTextBytes: Data
     ) {
-        if Data(draft.utf8) == savedTextBytes {
+        // A completed save only moves the baseline (REQ-002 6.4). A
+        // higher-revision draft typed while the save was in flight must
+        // survive untouched, and while marked text is active the model must
+        // never push a string back out that could clobber the composition.
+        // The byte check keeps a diverged draft; the string check avoids a
+        // no-op write when the saved text is already identical.
+        if !isMarkedTextActive,
+            Data(draft.utf8) == savedTextBytes,
+            draft != document.text
+        {
             draft = document.text
         }
         baselineBytes = Data(document.text.utf8)
         baselineContentHash = document.contentHash
         sourceInfo = document.sourceInfo
         sourceSnapshot = document.sourceSnapshot
+        // The save returned a fresh sourceSnapshot; re-parse the current
+        // draft against it. Scheduling a newer revision also supersedes any
+        // pending parse that still used the pre-save snapshot.
+        draftRevision += 1
+        projectionEngine.scheduleParse(
+            session: sessionID,
+            revision: draftRevision,
+            text: draft,
+            snapshot: sourceSnapshot
+        )
     }
 }
 
@@ -286,7 +402,11 @@ public enum EditorProjectionState: Equatable, Sendable {
 /// of edits coalesce into one parse per settled revision: scheduling a newer
 /// revision cancels the pending wait, the parse itself runs off the main
 /// actor, and results whose revision no longer matches are dropped instead
-/// of published.
+/// of published. Every parse is tagged with the editor session that scheduled
+/// it; a result publishes only when both its session and revision still match
+/// (REQ-002 6.3), so a superseded session's parse can never land in a newer
+/// session and the old session's projection never stays visible under a new
+/// note.
 @MainActor
 @Observable
 public final class EditorProjectionEngine {
@@ -299,6 +419,7 @@ public final class EditorProjectionEngine {
             String,
             MarkdownSourceSnapshot?
         ) async -> MarkdownEditorProjection?
+    private var currentSession = UUID()
     private var currentRevision = 0
     private var pendingTask: Task<Void, Never>?
 
@@ -316,14 +437,23 @@ public final class EditorProjectionEngine {
         self.build = build
     }
 
-    /// Records a newer draft revision and schedules its debounced parse.
-    /// Older revisions are ignored, and the pending wait of a superseded
-    /// revision is cancelled before the newer one starts.
+    /// Records a newer draft revision for the given session and schedules its
+    /// debounced parse. Older revisions of the same session are ignored. A
+    /// session that differs from the current one takes over: its pending
+    /// parse is cancelled, the stale projection is cleared, and its revision
+    /// space starts fresh.
     public func scheduleParse(
+        session: UUID,
         revision: Int,
         text: String,
         snapshot: MarkdownSourceSnapshot?
     ) {
+        if session != currentSession {
+            currentSession = session
+            currentRevision = 0
+            pendingTask?.cancel()
+            projection = nil
+        }
         guard revision > currentRevision else { return }
         currentRevision = revision
         state = .parsing(revision: revision)
@@ -332,17 +462,27 @@ public final class EditorProjectionEngine {
         pendingTask = Task { [weak self] in
             try? await Task.sleep(for: debounce)
             guard !Task.isCancelled else { return }
-            await self?.parse(revision: revision, text: text, snapshot: snapshot)
+            await self?.parse(
+                session: session,
+                revision: revision,
+                text: text,
+                snapshot: snapshot
+            )
         }
     }
 
     private func parse(
+        session: UUID,
         revision: Int,
         text: String,
         snapshot: MarkdownSourceSnapshot?
     ) async {
         let built = await build(text, snapshot)
-        guard revision == currentRevision, !Task.isCancelled else { return }
+        guard
+            session == currentSession,
+            revision == currentRevision,
+            !Task.isCancelled
+        else { return }
         if let built {
             projection = built
             state = .ready(revision: revision)

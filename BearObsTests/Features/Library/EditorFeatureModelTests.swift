@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import XCTest
 
 #if SWIFT_PACKAGE
@@ -28,8 +29,8 @@ final class EditorFeatureModelTests: XCTestCase {
 
     func testDebounceCoalescesBurstIntoSingleParseOfLatestText() async throws {
         let recorder = BuildRecorder()
-        let model = try makeModel(debounce: .milliseconds(50)) { text, _ in
-            await recorder.record(text)
+        let model = try makeModel(debounce: .milliseconds(50)) { text, snapshot in
+            await recorder.record(text, snapshot)
             return MarkdownEditorProjection(text: text, runs: [])
         }
 
@@ -48,19 +49,19 @@ final class EditorFeatureModelTests: XCTestCase {
     func testSupersededRevisionParseResultIsDropped() async throws {
         let gate = ParseGate()
         let recorder = BuildRecorder()
-        let model = try makeModel(build: { text, _ in
-            await recorder.record(text)
+        let model = try makeModel(build: { text, snapshot in
+            await recorder.record(text, snapshot)
             await gate.hold()
             return MarkdownEditorProjection(text: text, runs: [])
         })
 
         model.updateDraft("first")
-        try await waitUntil { await gate.entryCount == 1 }
+        try await waitUntil { gate.entryCount == 1 }
 
         model.updateDraft("second")
-        try await waitUntil { await gate.entryCount == 2 }
+        try await waitUntil { gate.entryCount == 2 }
 
-        await gate.release()
+        gate.release()
         try await waitUntil { model.projectionEngine.state == .ready(revision: 2) }
 
         let parsedTexts = await recorder.texts
@@ -107,8 +108,8 @@ final class EditorFeatureModelTests: XCTestCase {
 
     func testEqualDraftDoesNotBumpRevisionOrRescheduleParse() async throws {
         let recorder = BuildRecorder()
-        let model = try makeModel(build: { text, _ in
-            await recorder.record(text)
+        let model = try makeModel(build: { text, snapshot in
+            await recorder.record(text, snapshot)
             return MarkdownEditorProjection(text: text, runs: [])
         })
 
@@ -122,6 +123,288 @@ final class EditorFeatureModelTests: XCTestCase {
         XCTAssertEqual(parsedTexts, ["same"])
     }
 
+    func testNewInputDuringSaveStaysDirtyAndSurvivesCompletion() async throws {
+        let gate = ParseGate()
+        let savedHash = try Self.makeHash("b")
+        let model = try makeModel(
+            document: EditorDocument(
+                text: "baseline",
+                contentHash: try Self.makeHash("a"),
+                sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+            ),
+            save: { request in
+                await gate.hold()
+                return EditorDocument(
+                    text: request.text,
+                    contentHash: savedHash,
+                    sourceInfo: request.sourceInfo
+                )
+            }
+        )
+        await model.load()
+
+        model.updateDraft("saved text")
+        let task = Task { await model.save() }
+        try await waitUntil { model.state == .saving }
+        try await waitUntil { gate.entryCount == 1 }
+
+        model.updateDraft("typed while saving")
+
+        XCTAssertEqual(model.state, .saving)
+        XCTAssertTrue(model.isDirty)
+        XCTAssertEqual(model.draft, "typed while saving")
+
+        gate.release()
+        await task.value
+
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertNil(model.failure)
+        XCTAssertEqual(model.draft, "typed while saving")
+        XCTAssertTrue(model.isDirty)
+        XCTAssertEqual(model.draftRevision, 4)
+        try await waitUntil { model.projectionEngine.state == .ready(revision: 4) }
+        XCTAssertEqual(model.projectionEngine.projection?.text, "typed while saving")
+    }
+
+    func testSaveFailurePreservesDraftSelectionAndViewport() async throws {
+        let model = try makeModel(
+            document: EditorDocument(
+                text: "baseline",
+                contentHash: try Self.makeHash("a"),
+                sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+            ),
+            save: { _ in throw EditorDataSourceError.unavailable }
+        )
+        await model.load()
+
+        model.updateDraft("edited draft")
+        model.updateSelection(anchorUTF8: 2, headUTF8: 9)
+        model.updateViewport(utf8Anchor: 4, verticalOffset: 12.5)
+        let snapshotBeforeSave = model.draftSnapshot
+
+        await model.save()
+
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertEqual(model.failure, .saveFailed)
+        XCTAssertEqual(model.draft, "edited draft")
+        XCTAssertEqual(model.draftSnapshot, snapshotBeforeSave)
+    }
+
+    func testSaveCompletionDuringMarkedTextDoesNotForceRewriteDraft() async throws {
+        let gate = ParseGate()
+        let savedHash = try Self.makeHash("b")
+        let model = try makeModel(
+            document: EditorDocument(
+                text: "baseline",
+                contentHash: try Self.makeHash("a"),
+                sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+            ),
+            save: { request in
+                await gate.hold()
+                return EditorDocument(
+                    text: request.text,
+                    contentHash: savedHash,
+                    sourceInfo: request.sourceInfo
+                )
+            }
+        )
+        await model.load()
+
+        model.updateDraft("committed before composition")
+        let task = Task { await model.save() }
+        try await waitUntil { model.state == .saving }
+        try await waitUntil { gate.entryCount == 1 }
+
+        model.setMarkedTextActive(true)
+        let flag = ObservationFlag()
+        withObservationTracking {
+            _ = model.draft
+        } onChange: {
+            flag.didObserveDraftWrite = true
+        }
+
+        gate.release()
+        await task.value
+
+        XCTAssertFalse(flag.didObserveDraftWrite)
+        XCTAssertEqual(model.draft, "committed before composition")
+        XCTAssertFalse(model.isDirty)
+        XCTAssertEqual(model.state, .editing)
+        model.setMarkedTextActive(false)
+    }
+
+    func testSaveCompletionAdoptsCanonicalTextAndReprojectsWithNewSnapshot() async throws {
+        let gate = ParseGate()
+        let recorder = BuildRecorder()
+        let savedHash = try Self.makeHash("c")
+        let savedInfo = MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+        let savedSnapshot = MarkdownSourceSnapshot(
+            data: Data("edited text\n".utf8),
+            contentHash: savedHash,
+            sourceInfo: savedInfo,
+            text: "edited text\n",
+            sourceMap: MarkdownSourceMap(baselineHash: savedHash, nodes: [])
+        )
+        let model = try makeModel(
+            build: { text, snapshot in
+                await recorder.record(text, snapshot)
+                return MarkdownEditorProjection(text: text, runs: [])
+            },
+            document: EditorDocument(
+                text: "baseline",
+                contentHash: try Self.makeHash("a"),
+                sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+            ),
+            save: { request in
+                await gate.hold()
+                return EditorDocument(
+                    text: request.text + "\n",
+                    contentHash: savedHash,
+                    sourceInfo: request.sourceInfo,
+                    sourceSnapshot: savedSnapshot
+                )
+            }
+        )
+        await model.load()
+
+        model.updateSelection(anchorUTF8: 1, headUTF8: 3)
+        model.updateViewport(utf8Anchor: 2, verticalOffset: 7)
+        let selectionBefore = model.selection
+        let viewportBefore = model.viewport
+
+        model.updateDraft("edited text")
+        let task = Task { await model.save() }
+        try await waitUntil { model.state == .saving }
+        try await waitUntil { gate.entryCount == 1 }
+        gate.release()
+        await task.value
+
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertEqual(model.draft, "edited text\n")
+        XCTAssertFalse(model.isDirty)
+        XCTAssertEqual(model.selection, selectionBefore)
+        XCTAssertEqual(model.viewport, viewportBefore)
+        try await waitUntil { model.projectionEngine.state == .ready(revision: 3) }
+        let snapshots = await recorder.snapshots
+        XCTAssertEqual(snapshots.last, savedSnapshot)
+        let texts = await recorder.texts
+        XCTAssertEqual(texts.last, "edited text\n")
+    }
+
+    func testSessionSwitchDropsStaleSessionParseResultAndProjection() async throws {
+        let gate = ParseGate()
+        let engine = EditorProjectionEngine(debounce: .zero) { text, _ in
+            await gate.hold()
+            return MarkdownEditorProjection(text: text, runs: [])
+        }
+        let oldSession = UUID()
+        let newSession = UUID()
+
+        engine.scheduleParse(session: oldSession, revision: 1, text: "old note", snapshot: nil)
+        try await waitUntil { gate.entryCount == 1 }
+        gate.release()
+        try await waitUntil { engine.state == .ready(revision: 1) }
+        XCTAssertEqual(engine.projection?.text, "old note")
+
+        engine.scheduleParse(
+            session: oldSession,
+            revision: 2,
+            text: "old note edited",
+            snapshot: nil
+        )
+        try await waitUntil { gate.entryCount == 1 }
+
+        engine.scheduleParse(session: newSession, revision: 1, text: "new note", snapshot: nil)
+        XCTAssertNil(engine.projection)
+        XCTAssertEqual(engine.state, .parsing(revision: 1))
+
+        try await waitUntil { gate.entryCount == 2 }
+        gate.release()
+        try await waitUntil { engine.state == .ready(revision: 1) }
+        XCTAssertEqual(engine.projection?.text, "new note")
+    }
+
+    func testSessionsOnSharedSourceDoNotCrossPollute() async throws {
+        let loadGateA = ParseGate()
+        let saveGateA = ParseGate()
+        let info = MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+        let docA = EditorDocument(
+            text: "note A body",
+            contentHash: try Self.makeHash("a"),
+            sourceInfo: info
+        )
+        let docB = EditorDocument(
+            text: "note B body",
+            contentHash: try Self.makeHash("b"),
+            sourceInfo: info
+        )
+        let savedAHash = try Self.makeHash("c")
+        let savedBHash = try Self.makeHash("d")
+        let pathA = try VaultPath(decodedRelativePath: "A.md")
+        let pathB = try VaultPath(decodedRelativePath: "B.md")
+
+        let source = EditorDataSource(
+            load: { path in
+                if path == pathA {
+                    await loadGateA.hold()
+                    return docA
+                }
+                return docB
+            },
+            save: { request in
+                if request.path == pathA {
+                    await saveGateA.hold()
+                    return EditorDocument(
+                        text: request.text,
+                        contentHash: savedAHash,
+                        sourceInfo: request.sourceInfo
+                    )
+                }
+                return EditorDocument(
+                    text: request.text,
+                    contentHash: savedBHash,
+                    sourceInfo: request.sourceInfo
+                )
+            }
+        )
+
+        let modelA = EditorFeatureModel(path: pathA, source: source)
+        let modelB = EditorFeatureModel(path: pathB, source: source)
+
+        let loadA = Task { await modelA.load() }
+        try await waitUntil { loadGateA.entryCount == 1 }
+        await modelB.load()
+        XCTAssertEqual(modelB.draft, "note B body")
+
+        loadGateA.release()
+        await loadA.value
+        XCTAssertEqual(modelA.draft, "note A body")
+        XCTAssertEqual(modelB.draft, "note B body")
+
+        modelA.updateDraft("A edited")
+        let saveA = Task { await modelA.save() }
+        try await waitUntil { modelA.state == .saving }
+        try await waitUntil { saveGateA.entryCount == 1 }
+
+        modelB.updateDraft("B edited")
+        await modelB.save()
+        XCTAssertEqual(modelB.state, .editing)
+        XCTAssertNil(modelB.failure)
+        XCTAssertEqual(modelB.draft, "B edited")
+        XCTAssertFalse(modelB.isDirty)
+        XCTAssertEqual(modelB.baselineContentHash, savedBHash)
+
+        saveGateA.release()
+        await saveA.value
+        XCTAssertEqual(modelA.state, .editing)
+        XCTAssertNil(modelA.failure)
+        XCTAssertEqual(modelA.draft, "A edited")
+        XCTAssertFalse(modelA.isDirty)
+        XCTAssertEqual(modelA.baselineContentHash, savedAHash)
+        XCTAssertEqual(modelB.baselineContentHash, savedBHash)
+        XCTAssertEqual(modelB.draft, "B edited")
+    }
+
     private func makeModel(
         debounce: Duration = .zero,
         build:
@@ -131,7 +414,8 @@ final class EditorFeatureModelTests: XCTestCase {
             ) async -> MarkdownEditorProjection? = { text, _ in
                 MarkdownEditorProjection(text: text, runs: [])
             },
-        document: EditorDocument? = nil
+        document: EditorDocument? = nil,
+        save: (@Sendable (EditorSaveRequest) async throws -> EditorDocument)? = nil
     ) throws -> EditorFeatureModel {
         let document =
             try document
@@ -140,21 +424,31 @@ final class EditorFeatureModelTests: XCTestCase {
                 contentHash: ContentHash(hex: String(repeating: "a", count: 64)),
                 sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
             )
+        let saveOperation: @Sendable (EditorSaveRequest) async throws -> EditorDocument
+        if let save {
+            saveOperation = save
+        } else {
+            saveOperation = { request in
+                EditorDocument(
+                    text: request.text,
+                    contentHash: document.contentHash,
+                    sourceInfo: request.sourceInfo
+                )
+            }
+        }
         return EditorFeatureModel(
             path: try VaultPath(decodedRelativePath: "Draft.md"),
             source: EditorDataSource(
                 load: { _ in document },
-                save: { request in
-                    EditorDocument(
-                        text: request.text,
-                        contentHash: document.contentHash,
-                        sourceInfo: request.sourceInfo
-                    )
-                }
+                save: saveOperation
             ),
             projectionDebounce: debounce,
             projectionBuild: build
         )
+    }
+
+    private nonisolated static func makeHash(_ repeated: Character) throws -> ContentHash {
+        try ContentHash(hex: String(repeating: repeated, count: 64))
     }
 
     private func waitUntilReady(
@@ -192,12 +486,16 @@ final class EditorFeatureModelTests: XCTestCase {
 
 private actor BuildRecorder {
     private(set) var texts: [String] = []
+    private(set) var snapshots: [MarkdownSourceSnapshot?] = []
 
-    func record(_ text: String) {
+    func record(_ text: String, _ snapshot: MarkdownSourceSnapshot?) {
         texts.append(text)
+        snapshots.append(snapshot)
     }
+}
 
-    var parsedTexts: [String] { texts }
+private final class ObservationFlag: @unchecked Sendable {
+    var didObserveDraftWrite = false
 }
 
 /// Gate for the first parse results so a test can prove that a superseded
