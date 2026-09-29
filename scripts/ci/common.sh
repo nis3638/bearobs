@@ -9,8 +9,6 @@ DERIVED_DATA="$ROOT_DIR/.build/DerivedData"
 RESULTS_DIR="$ROOT_DIR/.build/TestResults"
 REPORTS_DIR="$ROOT_DIR/.build/reports"
 REQUIRED_XCODE_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/.xcode-version")"
-REQUIRED_IOS_RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-${REQUIRED_XCODE_VERSION//./-}"
-IOS_DEVICE_TYPE="${CI_DEVICE_TYPE:-com.apple.CoreSimulator.SimDeviceType.iPhone-16}"
 
 mkdir -p "$DERIVED_DATA" "$RESULTS_DIR" "$REPORTS_DIR"
 
@@ -32,11 +30,11 @@ assert_xcode_version() {
     fi
 }
 
-create_simulator() {
-    xcrun simctl create "BearObs-CI-$$" "$IOS_DEVICE_TYPE" "$REQUIRED_IOS_RUNTIME"
-}
-
 xcodebuild_base() {
+    # 从 GUI 应用（IDE、Agent 宿主）派生的 shell 会继承 __CFBundleIdentifier，
+    # 导致 xcodebuild 链路启动的 App 挂到宿主 bundle 上、不创建任何窗口，
+    # UI 测试因此全部失败。必须在启动 xcodebuild 前清除。
+    unset __CFBundleIdentifier LaunchInstanceID
     xcodebuild \
         -project "$PROJECT" \
         -scheme "$SCHEME" \

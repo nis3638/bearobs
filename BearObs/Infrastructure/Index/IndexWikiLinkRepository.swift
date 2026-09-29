@@ -84,33 +84,7 @@ extension SQLiteIndexRepository {
     public func resolveAllWikiLinks() async throws {
         try Task.checkCancellation()
         try await databasePool.write { database in
-            let paths = try String.fetchAll(database, sql: "SELECT path FROM notes").map {
-                try VaultPath(decodedRelativePath: $0)
-            }
-            let catalog = WikiLinkCatalog(paths: paths)
-            let rows = try Row.fetchAll(
-                database,
-                sql: "SELECT id, source_path, raw_target FROM links ORDER BY id"
-            )
-            for row in rows {
-                try Task.checkCancellation()
-                let rawSource: String = row["source_path"]
-                let rawTarget: String = row["raw_target"]
-                let source = try VaultPath(decodedRelativePath: rawSource)
-                let resolution = catalog.resolve(rawTarget, from: source)
-                try database.execute(
-                    sql: """
-                        UPDATE links
-                        SET resolution_state = ?, resolved_path = ?
-                        WHERE id = ?
-                        """,
-                    arguments: [
-                        resolution.databaseState,
-                        resolution.resolvedPath?.description,
-                        row["id"] as Int64,
-                    ]
-                )
-            }
+            try resolveWikiLinks(in: database)
         }
         try Task.checkCancellation()
     }
@@ -154,6 +128,45 @@ extension SQLiteIndexRepository {
         return MarkdownWikiLinkDestination(
             sourceRange: (row["source_start"] as Int)..<(row["source_end"] as Int),
             resolution: resolution
+        )
+    }
+}
+
+func resolveWikiLinks(
+    from selectedSource: VaultPath? = nil,
+    in database: Database
+) throws {
+    let paths = try String.fetchAll(database, sql: "SELECT path FROM notes").map {
+        try VaultPath(decodedRelativePath: $0)
+    }
+    let catalog = WikiLinkCatalog(paths: paths)
+    let sql: String
+    let arguments: StatementArguments
+    if let selectedSource {
+        sql = "SELECT id, source_path, raw_target FROM links WHERE source_path = ? ORDER BY id"
+        arguments = [selectedSource.description]
+    } else {
+        sql = "SELECT id, source_path, raw_target FROM links ORDER BY id"
+        arguments = []
+    }
+    let rows = try Row.fetchAll(database, sql: sql, arguments: arguments)
+    for row in rows {
+        try Task.checkCancellation()
+        let rawSource: String = row["source_path"]
+        let rawTarget: String = row["raw_target"]
+        let source = try VaultPath(decodedRelativePath: rawSource)
+        let resolution = catalog.resolve(rawTarget, from: source)
+        try database.execute(
+            sql: """
+                UPDATE links
+                SET resolution_state = ?, resolved_path = ?
+                WHERE id = ?
+                """,
+            arguments: [
+                resolution.databaseState,
+                resolution.resolvedPath?.description,
+                row["id"] as Int64,
+            ]
         )
     }
 }

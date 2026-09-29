@@ -90,6 +90,37 @@ final class IncrementalIndexScannerTests: XCTestCase {
         XCTAssertEqual(fts["tags"] as String, "")
         XCTAssertEqual(diagnostics, ["markdown.note-too-large"])
     }
+
+    func testRefreshUpdatesOneSavedNoteWithoutAFullVaultScan() async throws {
+        let fixture = try makeFixture()
+        let note = try write("# Before\n\nold body #old", at: fixture.root, path: "note.md")
+        try write("# Other\n\n[[note]]", at: fixture.root, path: "other.md")
+        _ = try await fixture.scanner.scan()
+        try await fixture.repository.databasePool.write { database in
+            try database.execute(
+                sql: """
+                    CREATE TRIGGER reject_unrelated_link_refresh
+                    BEFORE UPDATE ON links
+                    WHEN OLD.source_path = 'other.md'
+                    BEGIN
+                        SELECT RAISE(ABORT, 'unrelated link was refreshed');
+                    END
+                    """
+            )
+        }
+        try write("# After\n\nnew body #new", to: note)
+
+        try await fixture.scanner.refresh(
+            VaultPath(decodedRelativePath: "note.md")
+        )
+
+        let row = try await noteRow("note.md", in: fixture.repository)
+        XCTAssertEqual(row["title"] as String, "After")
+        let tags = try await fixture.repository.databasePool.read {
+            try String.fetchAll($0, sql: "SELECT normalized_name FROM tags ORDER BY 1")
+        }
+        XCTAssertEqual(tags, ["new"])
+    }
 }
 
 extension IncrementalIndexScannerTests {

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 
@@ -73,6 +74,94 @@ final class LocalVaultStoreTests: XCTestCase {
             XCTAssertEqual($0 as? LocalVaultStoreError, .rootChanged)
         }
     }
+
+    func testReplacesExistingFileOnlyWhenExpectedContentHashMatches() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "Folder/note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("# Before\n\nOriginal body.\n".utf8)
+        let replacement = Data("# After\n\nEdited body.\n".utf8)
+        try write(original, to: url)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o640],
+            ofItemAtPath: url.path
+        )
+        try setExtendedAttribute("preserve-me", named: "com.bearobs.test", at: url)
+        let store = try LocalVaultStore(root: root)
+        let baseline = try store.read(path, maximumRetainedBytes: original.count)
+
+        let replacementSnapshot = try store.replace(
+            path,
+            with: replacement,
+            expectedContentHash: baseline.contentHash
+        )
+
+        let saved = try store.read(path, maximumRetainedBytes: replacement.count)
+        XCTAssertEqual(saved.data, replacement)
+        XCTAssertEqual(replacementSnapshot.metadata, saved.metadata)
+        XCTAssertEqual(replacementSnapshot.contentHash, saved.contentHash)
+        XCTAssertEqual(replacementSnapshot.data, saved.data)
+        XCTAssertNotEqual(saved.contentHash, baseline.contentHash)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        XCTAssertEqual(attributes[.posixPermissions] as? NSNumber, NSNumber(value: 0o640))
+        XCTAssertEqual(
+            try extendedAttribute(named: "com.bearobs.test", at: url),
+            "preserve-me"
+        )
+        XCTAssertFalse(
+            try FileManager.default.contentsOfDirectory(
+                atPath: root.appendingPathComponent("Folder").path
+            )
+            .contains { $0.hasPrefix(".bearobs-staging-") }
+        )
+    }
+
+    func testRejectsStaleExpectedContentHashWithoutOverwritingExternalEdit() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let externalEdit = Data("external edit wins".utf8)
+        try write(original, to: url)
+        let store = try LocalVaultStore(root: root)
+        let baseline = try store.read(path, maximumRetainedBytes: original.count)
+        try write(externalEdit, to: url)
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data("stale editor draft".utf8),
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .contentChanged)
+        }
+        XCTAssertEqual(try Data(contentsOf: url), externalEdit)
+    }
+
+    func testReplacementRefusesSymlinkSwapWithoutWritingOutsideVault() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let note = root.appendingPathComponent(path.description)
+        let outside = root.deletingLastPathComponent()
+            .appendingPathComponent("\(UUID().uuidString).md")
+        addTeardownBlock { try? FileManager.default.removeItem(at: outside) }
+        try write(Data("inside".utf8), to: note)
+        try write(Data("outside".utf8), to: outside)
+        let store = try LocalVaultStore(root: root)
+        let baseline = try store.read(path, maximumRetainedBytes: 32)
+        try FileManager.default.removeItem(at: note)
+        try FileManager.default.createSymbolicLink(at: note, withDestinationURL: outside)
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data("escaped write".utf8),
+                expectedContentHash: baseline.contentHash
+            )
+        )
+        XCTAssertEqual(try Data(contentsOf: outside), Data("outside".utf8))
+    }
 }
 
 extension LocalVaultStoreTests {
@@ -90,5 +179,32 @@ extension LocalVaultStoreTests {
             withIntermediateDirectories: true
         )
         try data.write(to: url)
+    }
+
+    private func setExtendedAttribute(_ value: String, named name: String, at url: URL) throws {
+        let result = value.utf8CString.withUnsafeBytes { valueBytes in
+            name.withCString { namePointer in
+                setxattr(
+                    url.path,
+                    namePointer,
+                    valueBytes.baseAddress,
+                    valueBytes.count - 1,
+                    0,
+                    0
+                )
+            }
+        }
+        guard result == 0 else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    private func extendedAttribute(named name: String, at url: URL) throws -> String {
+        let size = name.withCString { getxattr(url.path, $0, nil, 0, 0, 0) }
+        guard size >= 0 else { throw CocoaError(.fileReadUnknown) }
+        var bytes = [UInt8](repeating: 0, count: size)
+        let count = name.withCString { namePointer in
+            getxattr(url.path, namePointer, &bytes, bytes.count, 0, 0)
+        }
+        guard count >= 0 else { throw CocoaError(.fileReadUnknown) }
+        return try XCTUnwrap(String(bytes: bytes.prefix(count), encoding: .utf8))
     }
 }

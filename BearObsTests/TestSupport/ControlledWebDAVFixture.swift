@@ -493,6 +493,8 @@ private final class FixtureRegistry: @unchecked Sendable {
 }
 
 final class ControlledWebDAVURLProtocol: URLProtocol, @unchecked Sendable {
+    private var pendingFailureCode: URLError.Code?
+
     override class func canInit(with request: URLRequest) -> Bool {
         guard
             request.url?.scheme == "https",
@@ -527,7 +529,13 @@ final class ControlledWebDAVURLProtocol: URLProtocol, @unchecked Sendable {
                 cacheStoragePolicy: .notAllowed
             )
             client?.urlProtocol(self, didLoad: prefix)
-            client?.urlProtocol(self, didFailWithError: URLError(code))
+            // Let URLSession deliver the prefix before the simulated connection loss.
+            pendingFailureCode = code
+            performSelector(
+                onMainThread: #selector(deliverPendingFailure),
+                with: nil,
+                waitUntilDone: false
+            )
         case .respond(let status, let headers, let body):
             client?.urlProtocol(
                 self,
@@ -542,6 +550,12 @@ final class ControlledWebDAVURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+
+    @objc private func deliverPendingFailure() {
+        guard let code = pendingFailureCode else { return }
+        pendingFailureCode = nil
+        client?.urlProtocol(self, didFailWithError: URLError(code))
+    }
 
     private func response(url: URL, status: Int, headers: [String: String]) -> HTTPURLResponse {
         HTTPURLResponse(

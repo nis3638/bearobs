@@ -12,7 +12,10 @@ Obsidian Vault 是用户长期拥有的文件集合。将 AST 或 YAML 再序列
 
 - 阅读、提取、渲染和索引使用 Markdown AST 与只读 Frontmatter。
 - 编辑已有笔记时处理原始字节流，尽量保留 BOM 和换行风格；写入通过同目录原子替换发布。
-- 不支持的语法安全降级为原文显示；不做富文本、Live Preview、自动格式化或 AST 全文回写。
+- 不支持的语法安全降级为原文显示；不做富文本、自动格式化或 AST 全文回写。
+
+> 2026-09-28 修订：原“不做 Live Preview”一项由 [ADR-009](ADR-009-source-preserving-live-preview.md)
+> 替代；原始 Markdown 事实源与禁止 AST 全文回写两条不变量继续有效。
 
 ## 不做什么
 

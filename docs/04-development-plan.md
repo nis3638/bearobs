@@ -1,9 +1,9 @@
 # BearObs 开发计划
 
 > 文档状态：执行中（计划基线已确认）
-> 版本：1.2
+> 版本：1.5
 > 基线日期：2026-07-28
-> 最近状态更新：2026-08-13
+> 最近状态更新：2026-08-28
 > 上游文档：[产品需求](01-product-requirements.md) · [技术路线](02-technical-roadmap.md) · [开发设计](03-development-design.md)
 
 ## 1. 计划目标
@@ -13,9 +13,12 @@
 ```text
 工程与安全基线
   -> 本地只读纵切
+  -> 本地原始编辑与原子保存
   -> WebDAV 拉取技术预览
-  -> 安全编辑与条件上传
+  -> 条件上传
   -> 冲突处理与发布加固
+
+首发平台为 macOS；iOS 客户端不进入 M0-M4 的发布关键路径，只复用已验证的核心模块。
 ```
 
 UI 可以在阶段内并行，但任何远端写能力不得越过本地原子写、同步基线和冲突决策质量门槛。
@@ -24,7 +27,7 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 
 以下是工作量基线，不是未经验证的交付承诺：
 
-- 团队基线：2 名有 SwiftUI 和并发经验的 iOS 工程师；
+- 团队基线：2 名有 SwiftUI、AppKit 和并发经验的 macOS 工程师；
 - 兼职支持：产品/设计、QA 和安全评审；
 - 工作量：约 11-14 工程师周；
 - 关键路径日历时间：约 9-12 周；
@@ -42,11 +45,11 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 
 | 里程碑 | 目标 | 预计工作量 | 发布形态 | 执行状态 |
 |---|---|---:|---|---|
-| M0 | 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 完成：11 项完成，M0-11 移交 M2-A6 |
-| M1 | 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 进行中 |
-| M2 | WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 未开始 |
-| M3 | 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 未开始 |
-| M4 | 冲突与发布加固 | 2-3 工程师周 | 对外 MVP | 未开始 |
+| M0 | Mac 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 完成：11 项完成，M0-11 移交 M2-A6 |
+| M1 | Mac 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 完成：C1-C8 已闭合，本地 Obsidian Vault 可作为只读笔记来源 |
+| M2 | Mac WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 延期：在本地编辑闭环后恢复 |
+| M3 | Mac 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 进行中：A1-A5 本地编辑闭合；上传未开始 |
+| M4 | Mac 冲突与发布加固 | 2-3 工程师周 | 对外 Mac MVP | 未开始 |
 
 M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 
@@ -54,12 +57,12 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 
 | 项目 | 当前状态 |
 |---|---|
-| 当前里程碑 | M1：本地只读纵切 |
-| 当前进行中 | 无；M1-C5 Wiki Link 跳转已闭合 |
-| 最近完成 | M1-C5：索引消歧、精确 occurrence 渲染和 Reader 内部跳转 |
-| 下一计划项 | M1-C6：收藏与最近 |
-| 退出阻塞 | 无；坚果云真实认证和分页协议不阻塞 M1 |
-| 里程碑验收 | M0 已按调整后的 5.4 退出；M1 验收尚未开始 |
+| 当前里程碑 | M3：Mac 本地编辑纵切（A1-A5 完成） |
+| 当前进行中 | 无 |
+| 最近完成 | M3-A1 至 A5：原始 Markdown 编辑、脏状态保护、格式保留、原子保存和单笔记索引刷新 |
+| 下一计划项 | M3-C1：将生产原子写系统调用抽成故障注入接缝，覆盖磁盘/同步/rename 故障矩阵 |
+| 退出阻塞 | 无；坚果云真实认证和分页协议不阻塞本地只读或本地编辑 |
+| 里程碑验收 | M0、M1 已完成；M2 依产品顺序延期 |
 
 状态含义：
 
@@ -111,15 +114,15 @@ M0 到 M4 是串联质量门。阶段内可并行的任务会明确标注。
 | ID | 工作项 | 产出 | 状态 | 证据或缺口 |
 |---|---|---|---|---|
 | M0-01 | 将 `bearobs` 初始化为独立 Git 仓库 | 独立历史和分支边界 | 完成 | 独立 `.git`、`main` 分支；`git rev-parse --show-toplevel` 返回 `/Users/ivows/workspace/bearobs` |
-| M0-02 | 创建 iOS 26+ SwiftUI 工程 | App、Unit Test、UI Test targets | 完成 | `BearObs.xcodeproj`、共享 scheme、三个 targets；Unit Test target 已通过 `build-for-testing` |
+| M0-02 | 创建 macOS 15+ SwiftUI/AppKit 工程 | App、Unit Test、UI Test targets | 完成 | `BearObs.xcodeproj`、共享 scheme、三个 targets；Unit Test target 已通过 `build-for-testing` |
 | M0-03 | 建立 CI | build、test、coverage、静态检查 | 完成 | `.github/workflows/ci.yml`、`scripts/ci/` 和 `Makefile` |
 | M0-04 | 建立依赖和配置管理 | 锁定版本、无硬编码秘密 | 完成 | `.xcode-version`、`Config/`、零第三方运行时依赖、工作树及全 Git 历史秘密扫描 |
 | M0-05 | 建立 Golden Vault | 兼容性和性能 fixture | 完成 | 13 个 parser case、1 MiB 大文件、256 个小文件；`make check` 与 test bundle 资源复制验证通过 |
 | M0-06 | 建立可控 WebDAV fixture | PROPFIND、GET、PUT、412 和故障注入 | 完成 | 6 个合成资源、Depth:1 `207` golden、11 个 XCTest 契约、9 个故障/协议场景；`make check` 行为验证、`build-for-testing` 与 test bundle 资源复制通过 |
-| M0-07 | Spike GRDB/FTS5 | migration、异步访问、10k 基线 | 完成 | 隔离 SwiftPM Spike 锁定 GRDB 7.11.1；7 个测试覆盖 v1→v2 回填、幂等、事务回滚、并发 async 读写、FTS 更新与 `unicode61`；10k Release 写入 2.855～3.204 秒、搜索 P95 0.302～0.330 毫秒；源码行覆盖率 99.02%，iOS 26 arm64 交叉编译通过 |
-| M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 完成 | 隔离 SwiftPM Spike 锁定 swift-markdown 0.8.0 与 Yams 6.2.2；14 个 XCTest 覆盖 AST、只读 Frontmatter、标签/链接/Embed 排除与转义、Golden Vault 契约预期、无效 UTF-8、BOM/换行和性能；源码行覆盖率 93.74%，iOS 26 arm64 交叉编译通过 |
-| M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 完成 | 隔离 SwiftPM Spike 以稳定父目录 descriptor、同目录 exclusive staging、`fsync`、mode 保留、inode 核对、单次 `rename` 和父目录同步替换已有文件；15 个 XCTest 覆盖 ENOSPC、短写/EINTR、权限、sync/close/rename、提交后错误、符号链接、字节保留及四类路径竞争；独立进程验证 7 个 SIGKILL 阶段；region 87.04%、line 94.88%，iOS 26 arm64 交叉编译通过 |
-| M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 完成 | App Domain 冻结已解码/百分号路径双入口、NFC 身份、只解码一次和 Codable 重校验；纯 `SyncPlanner` 区分 tracked/initialImport/conservativeRecovery，破坏性计划携带 CAS，缺失可靠写前置条件永不 upload；强 ETag 从完整响应头解析，内容身份与写保护条件分离；错误恢复动作由 11 类错误唯一派生，诊断仅白名单结构字段；22 个 host XCTest 通过，region 98.89%、line 99.44%，Xcode test bundle 与 iOS 26 arm64 交叉编译通过 |
+| M0-07 | Spike GRDB/FTS5 | migration、异步访问、10k 基线 | 完成 | 隔离 SwiftPM Spike 锁定 GRDB 7.11.1；7 个测试覆盖 v1→v2 回填、幂等、事务回滚、并发 async 读写、FTS 更新与 `unicode61`；10k Release 写入 2.855～3.204 秒、搜索 P95 0.302～0.330 毫秒；源码行覆盖率 99.02%，macOS arm64 交叉编译通过 |
+| M0-08 | Spike Markdown | AST、Frontmatter、标签、Wiki Link、渲染 | 完成 | 隔离 SwiftPM Spike 锁定 swift-markdown 0.8.0 与 Yams 6.2.2；14 个 XCTest 覆盖 AST、只读 Frontmatter、标签/链接/Embed 排除与转义、Golden Vault 契约预期、无效 UTF-8、BOM/换行和性能；源码行覆盖率 93.74%，macOS arm64 交叉编译通过 |
+| M0-09 | Spike 原子文件写 | 崩溃和磁盘失败测试 | 完成 | 隔离 SwiftPM Spike 以稳定父目录 descriptor、同目录 exclusive staging、`fsync`、mode 保留、inode 核对、单次 `rename` 和父目录同步替换已有文件；15 个 XCTest 覆盖 ENOSPC、短写/EINTR、权限、sync/close/rename、提交后错误、符号链接、字节保留及四类路径竞争；独立进程验证 7 个 SIGKILL 阶段；region 87.04%、line 94.88%，macOS arm64 交叉编译通过 |
+| M0-10 | 冻结领域模型 | VaultPath、SyncDecision、错误模型 | 完成 | App Domain 冻结已解码/百分号路径双入口、NFC 身份、只解码一次和 Codable 重校验；纯 `SyncPlanner` 区分 tracked/initialImport/conservativeRecovery，破坏性计划携带 CAS，缺失可靠写前置条件永不 upload；强 ETag 从完整响应头解析，内容身份与写保护条件分离；错误恢复动作由 11 类错误唯一派生，诊断仅白名单结构字段；22 个 host XCTest 通过，region 98.89%、line 99.44%，Xcode test bundle 与 macOS arm64 交叉编译通过 |
 | M0-11 | 认证首个服务 | 坚果云真实 WebDAV 本机人工验证 | 延期（移交 M2-A6） | 验证工具及安全边界已经建立，117 个离线 XCTest 通过；真实验证未执行，分页协议未文档化。该缺口不再阻塞 M0/M1，但任何真实服务发布和远端写仍受其约束 |
 | M0-12 | 编写 ADR-001 至 ADR-007 | 可追溯决策 | 完成 | ADR-001～007 已写入；ADR-006 已接受服务选择，坚果云认证能力完整移交 M2-A6 |
 
@@ -202,17 +205,17 @@ Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like
 
 | ID | 工作项 | 依赖 | 状态 | 证据或缺口 |
 |---|---|---|---|---|
-| M1-A1 | 实现 VaultPath 和本地枚举 | M0-10 | 完成 | `LocalVaultEnumerator` 使用 descriptor-relative `openat`、`fstatat` 和 `O_NOFOLLOW` 流式递归；排除保留目录和非 Markdown，跳过文件/目录符号链接，NFC `VaultPath` 确定排序；6 个 XCTest 覆盖 Golden Vault 272 个 Markdown、Unicode/空格/字面 `%`、根边界和 visitor 失败；region 86.15%、line 92.31%，SwiftPM 28 测试与 iOS Simulator `build-for-testing` 通过 |
-| M1-A2 | 实现 Frontmatter 只读解析 | M0-08 | 完成 | 独立 `BearObsMarkdown` 模块锁定 Yams 6.2.2；按原始 `Data` 识别精确分隔线、UTF-8 BOM、LF/CRLF，输出正文 byte range；只读取 YAML `title` 与字符串/数组 `tags`，无效 YAML 和未闭合 Frontmatter 返回固定结构化诊断且正文仍可读；7 个 XCTest 覆盖 Golden Vault、空/缺失 Frontmatter、无效 UTF-8和字节不改写；SwiftPM 全量 35 测试通过，parser region 88.64%、line 96.46%，Xcode iOS Simulator SDK 下 App、Yams 与 Unit Test targets 编译链接通过 |
-| M1-A3 | 实现标准 Markdown AST | M0-08 | 完成 | 正式 `BearObsMarkdown` 精确锁定 swift-markdown 0.8.0；`MarkdownASTParser` 只消费 M1-A2 的正文 byte range，返回正文相对 `Document` 与原文映射范围，不重新识别 Frontmatter；7 个 XCTest 覆盖标准节点、链接/图片、源码位置、空正文、有效/无效/未闭合 Frontmatter、BOM/CRLF/Unicode 及 Obsidian 扩展原文降级；SwiftPM 全量 42 测试通过，parser region/line 100%，iOS 26 Release 交叉编译及 Xcode App、Unit Test targets 编译链接通过；独立审查无 actionable findings，未混入 M1-A4 扫描、HTML 或 UI |
-| M1-A4 | 实现标签、Wiki Link 和 Embed 扫描 | M1-A2、M1-A3 | 完成 | `ObsidianSyntaxScanner` 只消费与 AST 同源的正文数据，以 AST 范围遮罩代码、标准链接目标、图片和 HTML，再线性扫描 Inline Tag、Wiki Link 与 Embed；每次 occurrence 保留原始 source 及原笔记 UTF-8 半开 byte range，不在语法层去重或解析路径；13 个 XCTest 覆盖 Golden Vault、链接可见文字、代码/URL/HTML 排除、奇偶转义、标签边界、BOM/CRLF/Unicode、Frontmatter 降级、重复/空/跨行/未闭合 token；SwiftPM 全量 55 测试通过，scanner region 94.44%、line 96.71%，iOS 26 Release 交叉编译及 Xcode App、Unit Test targets 编译链接通过；平方级未闭合 token 搜索和范围 fail-open 已在审查中消除 |
-| M1-A5 | 实现标题、摘要和解析诊断 | M1-A4 | 完成 | `MarkdownNoteParser` 成为唯一公开生产解析入口，在 UTF-8/YAML/AST 前执行已由 Golden 基线验证的 1 MiB note byte limit；Yams 前再执行 64 KiB Frontmatter 及 libyaml event 级 depth/node/alias 预算，扫描和聚合阶段限制 Frontmatter tags、语法 occurrence、单 token bytes 与唯一标签。标题固定为 Frontmatter、首个顶层 ATX H1、文件名 stem 三段优先级，摘要取正确标题边界后的首个顶层语义段落并流式截到 200 个 Character；Frontmatter 与正文标签按 NFC、固定 locale 大小写身份稳定合并，同时原始 A4 occurrence/range 不变。22 个新 XCTest 覆盖优先级、结构去除、转义/代码语义、YAML merge、Unicode、诊断、对抗性资源边界和 Golden 集成，SwiftPM 全量 77 测试通过；parser region 88.17%、line 95.08%，相关生产文件总 region 92.81%、line 96.53%，`make check` 和 iOS 26 Release 交叉编译通过；独立安全复审无 actionable finding；本机无 Simulator runtime，最终 Xcode scheme 重跑保留为已记录的基础设施缺口 |
+| M1-A1 | 实现 VaultPath 和本地枚举 | M0-10 | 完成 | `LocalVaultEnumerator` 使用 descriptor-relative `openat`、`fstatat` 和 `O_NOFOLLOW` 流式递归；排除保留目录和非 Markdown，跳过文件/目录符号链接，NFC `VaultPath` 确定排序；6 个 XCTest 覆盖 Golden Vault 272 个 Markdown、Unicode/空格/字面 `%`、根边界和 visitor 失败；region 86.15%、line 92.31%，SwiftPM 28 测试与 macOS host `build-for-testing` 通过 |
+| M1-A2 | 实现 Frontmatter 只读解析 | M0-08 | 完成 | 独立 `BearObsMarkdown` 模块锁定 Yams 6.2.2；按原始 `Data` 识别精确分隔线、UTF-8 BOM、LF/CRLF，输出正文 byte range；只读取 YAML `title` 与字符串/数组 `tags`，无效 YAML 和未闭合 Frontmatter 返回固定结构化诊断且正文仍可读；7 个 XCTest 覆盖 Golden Vault、空/缺失 Frontmatter、无效 UTF-8和字节不改写；SwiftPM 全量 35 测试通过，parser region 88.64%、line 96.46%，Xcode macOS host SDK 下 App、Yams 与 Unit Test targets 编译链接通过 |
+| M1-A3 | 实现标准 Markdown AST | M0-08 | 完成 | 正式 `BearObsMarkdown` 精确锁定 swift-markdown 0.8.0；`MarkdownASTParser` 只消费 M1-A2 的正文 byte range，返回正文相对 `Document` 与原文映射范围，不重新识别 Frontmatter；7 个 XCTest 覆盖标准节点、链接/图片、源码位置、空正文、有效/无效/未闭合 Frontmatter、BOM/CRLF/Unicode 及 Obsidian 扩展原文降级；SwiftPM 全量 42 测试通过，parser region/line 100%，macOS Release 交叉编译及 Xcode App、Unit Test targets 编译链接通过；独立审查无 actionable findings，未混入 M1-A4 扫描、HTML 或 UI |
+| M1-A4 | 实现标签、Wiki Link 和 Embed 扫描 | M1-A2、M1-A3 | 完成 | `ObsidianSyntaxScanner` 只消费与 AST 同源的正文数据，以 AST 范围遮罩代码、标准链接目标、图片和 HTML，再线性扫描 Inline Tag、Wiki Link 与 Embed；每次 occurrence 保留原始 source 及原笔记 UTF-8 半开 byte range，不在语法层去重或解析路径；13 个 XCTest 覆盖 Golden Vault、链接可见文字、代码/URL/HTML 排除、奇偶转义、标签边界、BOM/CRLF/Unicode、Frontmatter 降级、重复/空/跨行/未闭合 token；SwiftPM 全量 55 测试通过，scanner region 94.44%、line 96.71%，macOS Release 交叉编译及 Xcode App、Unit Test targets 编译链接通过；平方级未闭合 token 搜索和范围 fail-open 已在审查中消除 |
+| M1-A5 | 实现标题、摘要和解析诊断 | M1-A4 | 完成 | `MarkdownNoteParser` 成为唯一公开生产解析入口，在 UTF-8/YAML/AST 前执行已由 Golden 基线验证的 1 MiB note byte limit；Yams 前再执行 64 KiB Frontmatter 及 libyaml event 级 depth/node/alias 预算，扫描和聚合阶段限制 Frontmatter tags、语法 occurrence、单 token bytes 与唯一标签。标题固定为 Frontmatter、首个顶层 ATX H1、文件名 stem 三段优先级，摘要取正确标题边界后的首个顶层语义段落并流式截到 200 个 Character；Frontmatter 与正文标签按 NFC、固定 locale 大小写身份稳定合并，同时原始 A4 occurrence/range 不变。22 个新 XCTest 覆盖优先级、结构去除、转义/代码语义、YAML merge、Unicode、诊断、对抗性资源边界和 Golden 集成，SwiftPM 全量 77 测试通过；parser region 88.17%、line 95.08%，相关生产文件总 region 92.81%、line 96.53%，`make check` 和 macOS Release 交叉编译通过；独立安全复审无 actionable finding；本机无可用 Mac UI 运行环境，最终 Xcode scheme 重跑保留为已记录的基础设施缺口 |
 
 ### 6.3 工作流 B：索引与搜索
 
 | ID | 工作项 | 依赖 | 状态 | 证据或缺口 |
 |---|---|---|---|---|
-| M1-B1 | 建立 `index.sqlite` migrations | M0-07 | 完成 | 正式 `BearObsIndex` 精确锁定 GRDB 7.11.1；v1 建立 notes、tags、note_tags、links、attachments 及约束/索引，v2 建立 FTS5 `unicode61` 并回填旧行；7 个 XCTest 覆盖新库、磁盘重开幂等、v1→v2 回填、迁移失败不误记、外键级联、状态/range 约束和重复 occurrence 保真；源码 region/line 100%，SwiftPM 全量 84 测试、`make check` 与 iOS 26 arm64 Release 交叉编译通过；本机缺 iOS 26.5 runtime，Xcode scheme build/test 仍为基础设施缺口 |
+| M1-B1 | 建立 `index.sqlite` migrations | M0-07 | 完成 | 正式 `BearObsIndex` 精确锁定 GRDB 7.11.1；v1 建立 notes、tags、note_tags、links、attachments 及约束/索引，v2 建立 FTS5 `unicode61` 并回填旧行；7 个 XCTest 覆盖新库、磁盘重开幂等、v1→v2 回填、迁移失败不误记、外键级联、状态/range 约束和重复 occurrence 保真；源码 region/line 100%，SwiftPM 全量 84 测试、`make check` 与 macOS arm64 Release 交叉编译通过；本机缺 可用 macOS UI 测试运行环境，Xcode scheme build/test 仍为基础设施缺口 |
 | M1-B2 | 实现单文件事务索引 | M1-A5 | 完成 | `IndexNoteInput` 冻结解析结果与文件属性；单事务替换 notes、tags、occurrence 与双 FTS，删除和失败降级同样原子；故障 trigger 验证整笔回滚，标签展示名可确定性重算 |
 | M1-B3 | 实现增量扫描和 hash 跳过 | M1-B2 | 完成 | descriptor-relative `LocalVaultStore` 不跟随符号链接，单次读取流式 SHA-256；路径/size/mtime 快筛，同 hash 只刷新元数据，变更才解析，超限或非法 UTF-8 保留安全标题 |
 | M1-B4 | 实现 FTS5 查询和排序 | M1-B2 | 完成 | 查询 NFC/空白规范化，256 字符与 1...100 limit 硬边界，全量参数绑定；bm25 权重 title 10、tags 5、body 1，空查询按最近修改时间返回 |
@@ -223,13 +226,14 @@ Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like
 
 | ID | 工作项 | 依赖 | 状态 | 证据或缺口 |
 |---|---|---|---|---|
-| M1-C1 | Library 列表和状态 | M1-B2 | 完成 | `libraryNotes()` 返回不可变摘要并按修改时间/路径稳定排序；`LibraryFeatureModel` 明确建模 loading、indexing、content、empty、failure，失败文案不透传底层错误，刷新失败保留旧列表，竞态由 operation ID 拒绝旧结果；SwiftUI 展示标题、摘要、相对时间和非纯颜色解析状态；7 个新测试、SwiftPM 全量 115 测试通过，全量生产源码 region 86.31%/line 89.05%，核心逻辑 region 92.13%/line 96.87%；App 壳完成 macOS host 与 iOS 26 arm64 Release 交叉编译 |
-| M1-C2 | 标签导航 | M1-B2 | 完成 | `libraryTags()` 从 tags/note_tags 返回稳定展示名和计数，`libraryNotes(taggedWith:)` 参数绑定精确筛选并复用 Library 排序/摘要；标签页、空态、错误、刷新失败保留旧结果和按标签笔记页均通过 Feature Model 隔离；7 个新测试、SwiftPM 全量 122 测试通过，全量生产源码 region 83.77%/line 85.66%，核心逻辑 region 92.00%/line 96.95%；App 壳 iOS 26 arm64 Release 交叉编译通过 |
-| M1-C3 | 搜索和摘要 | M1-B4 | 完成 | `SearchFeatureModel` 只消费现有搜索端口，明确建模 loading/content/empty/failure；operation ID 拒绝过期结果，结构化取消恢复稳定状态，错误只显示固定文案；SwiftUI 搜索页复用最近笔记、普通/CJK FTS 排序和有界摘要，不加载正文；3 个新状态机测试，SwiftPM 全量 125 测试通过，全量生产源码 region 81.86%/line 83.27%，核心逻辑 region 91.77%/line 96.91%，Search model line 97.14%；App 壳 iOS 26 arm64 Release 交叉编译通过 |
-| M1-C4 | Markdown Reader | M1-A3 | 完成 | `ReaderDataSource.localVault` 按规范路径在独立 actor 读取并复用统一 parser；闭合 block/inline 模型支持标题、段落、强调、粗体、删除线、列表/任务、引用、行内/块代码和安全标准链接，HTML/未知/Obsidian 语法安全显示原文；Library、Tags、Search 均可进入 Reader；6 个新解析/状态/离屏渲染测试，SwiftPM 全量 132 测试通过，全量生产源码 region 80.81%/line 81.56%，核心逻辑 region 90.46%/line 96.47%；App 壳 iOS 26 arm64 Release 交叉编译通过 |
-| M1-C5 | Wiki Link 跳转 | M1-A4、M1-C4 | 完成 | 扫描结束后批量按显式路径、源目录、Vault 根、唯一文件名的固定优先级解析 occurrence；歧义、缺失和非法路径不猜测；Reader 按原始 UTF-8 range 精确合并解析结果，仅 resolved 的规范 `VaultPath` 生成受限内部路由并复用同一 Reader source 递归导航；新增 7 个解析、持久化、重复 occurrence、路由安全和真实扫描到 Reader 集成测试，SwiftPM 全量 139 测试通过，全量生产源码 region 81.20%/line 82.56%；`make check` 与 iOS 26 arm64 Release 交叉编译通过 |
-| M1-C6 | 本机收藏 | M1-C1 | 未开始 | 用户状态仓储尚未实现 |
-| M1-C7 | Dynamic Type、VoiceOver、深色模式 | M1-C1 至 C6 | 未开始 | 终局可访问性验收 |
+| M1-C1 | Library 列表和状态 | M1-B2 | 完成 | `libraryNotes()` 返回不可变摘要并按修改时间/路径稳定排序；`LibraryFeatureModel` 明确建模 loading、indexing、content、empty、failure，失败文案不透传底层错误，刷新失败保留旧列表，竞态由 operation ID 拒绝旧结果；SwiftUI 展示标题、摘要、相对时间和非纯颜色解析状态；7 个新测试、SwiftPM 全量 115 测试通过，全量生产源码 region 86.31%/line 89.05%，核心逻辑 region 92.13%/line 96.87%；App 壳完成 macOS host 与 macOS arm64 Release 交叉编译 |
+| M1-C2 | 标签导航 | M1-B2 | 完成 | `libraryTags()` 从 tags/note_tags 返回稳定展示名和计数，`libraryNotes(taggedWith:)` 参数绑定精确筛选并复用 Library 排序/摘要；主侧边栏标签树、中栏固定笔记列表、空态、错误、刷新失败保留旧结果和精确标签笔记查询均通过 Feature Model 隔离；7 个新测试、SwiftPM 全量 122 测试通过，全量生产源码 region 83.77%/line 85.66%，核心逻辑 region 92.00%/line 96.95%；App 壳 macOS arm64 Release 交叉编译通过 |
+| M1-C3 | 搜索和摘要 | M1-B4 | 完成 | `SearchFeatureModel` 只消费现有搜索端口，明确建模 loading/content/empty/failure；operation ID 拒绝过期结果，结构化取消恢复稳定状态，错误只显示固定文案；SwiftUI 搜索页复用最近笔记、普通/CJK FTS 排序和有界摘要，不加载正文；3 个新状态机测试，SwiftPM 全量 125 测试通过，全量生产源码 region 81.86%/line 83.27%，核心逻辑 region 91.77%/line 96.91%，Search model line 97.14%；App 壳 macOS arm64 Release 交叉编译通过 |
+| M1-C4 | Markdown Reader | M1-A3 | 完成 | `ReaderDataSource.localVault` 按规范路径在独立 actor 读取并复用统一 parser；闭合 block/inline 模型支持标题、段落、强调、粗体、删除线、列表/任务、引用、行内/块代码和安全标准链接，HTML/未知/Obsidian 语法安全显示原文；Library、Tags、Search 均可进入 Reader；6 个新解析/状态/离屏渲染测试，SwiftPM 全量 132 测试通过，全量生产源码 region 80.81%/line 81.56%，核心逻辑 region 90.46%/line 96.47%；App 壳 macOS arm64 Release 交叉编译通过 |
+| M1-C5 | Wiki Link 跳转 | M1-A4、M1-C4 | 完成 | 扫描结束后批量按显式路径、源目录、Vault 根、唯一文件名的固定优先级解析 occurrence；歧义、缺失和非法路径不猜测；Reader 按原始 UTF-8 range 精确合并解析结果，仅 resolved 的规范 `VaultPath` 生成受限内部路由并复用同一 Reader source 递归导航；新增 7 个解析、持久化、重复 occurrence、路由安全和真实扫描到 Reader 集成测试，SwiftPM 全量 139 测试通过，全量生产源码 region 81.20%/line 82.56%；`make check` 与 macOS arm64 Release 交叉编译通过 |
+| M1-C6 | 本机收藏 | M1-C1 | 完成 | `FileUserStateStore` 原子持久化 `Metadata/user-state.json`，`AppEnvironment` 将 `Files/`、`Metadata/index.sqlite`、索引扫描器和用户状态仓储组装为唯一生产组合根；Library、Tags、Search、Favorites、Recent 和 Reader 共享同一 `FavoritesFeatureModel`，Reader 首次进入即加载持久化状态，星标更新失败保留旧状态并显示固定文案；空查询复用索引最近修改排序。并发旧写入完成后会按最新意图补偿，避免内存/磁盘分裂；Reader 在收藏状态就绪前禁用按钮。SwiftPM 全量 176 测试通过，Reader/Favorites/Recent 离屏渲染和真实本地 Reader 集成通过，`swift-format lint --strict`、`git diff --check`、pbxproj 校验和 arm64 macOS Release 交叉编译通过。 |
+| M1-C7 | macOS VoiceOver、键盘导航、深色模式 | M1-C1 至 C6 | 完成 | 主工作区采用 macOS 原生可收缩三栏：资料库导航、笔记列表和阅读详情分离，左栏保留笔记/最近/收藏/标签/搜索，中栏保持选择状态，右栏只渲染选中笔记；Library/Search 标题、日期和摘要不截断；Reader 标题暴露 H1-H6，装饰元素不进入 VoiceOver；外链和 resolved Wiki Link 在 macOS AX 树中均暴露为独立 link，引用正文独立可读，任务项朗读“已完成/未完成”，收藏按钮随状态朗读“收藏/取消收藏”，代码区提供 `Scroll Left/Right` 且滚动值可由 0→1；浅/深色离屏矩阵、普通键盘导航和 macOS UI 启动/主导航冒烟均通过。VoiceOver 操作不属于本项目用户要求，因此不作为退出条件。 |
+| M1-C8 | 选择并加载本地 Obsidian Vault | M1-A1 至 C7 | 完成 | 首次启动显示可访问的“打开 Vault…”入口，macOS 原生目录选择器只接受目录；选择后使用 security-scoped bookmark 持久化并在下次启动恢复。每次选择使用独立 UUID，在 `Application Support/BearObs/Vaults/<UUID>/Metadata` 保存 `index.sqlite` 与 `user-state.json`；用户 Vault 始终只读，切换 Vault 不会复用旧索引或收藏。选择状态文件拒绝目录/文件符号链接、非普通文件、超限和无效数据，持久化为原子写入且权限为 `0600`。4 个 XCTest 覆盖空状态、bookmark 创建/恢复、存储 round-trip 和选择文件符号链接拒绝；macOS Debug 构建与专项测试通过。 |
 
 工作流 A、B、C 在接口冻结后可并行，但 C 不得绕过应用用例直接访问 SQLite。
 
@@ -241,7 +245,8 @@ Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like
 - FTS 标题、正文和标签测试；
 - 同名链接解析测试；
 - 10,000 文件性能测试；
-- 离线列表、搜索、阅读 XCUITest。
+- 本地 Vault 选择、bookmark 恢复和无效选择状态测试；
+- 离线列表、搜索、阅读 macOS UI 自动化测试。
 
 ### 6.6 退出条件
 
@@ -251,6 +256,7 @@ Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like
 - 任何只读流程都不修改 Vault 字节；
 - 满足 PRD 本地性能预算；
 - 中文搜索策略已有实测决策；
+- 可选择并在重启后恢复本地 Obsidian Vault；
 - 形成内部 P0。
 
 ## 7. M2：WebDAV 拉取技术预览
@@ -291,7 +297,7 @@ Data Protection/iCloud Keychain 混查或混删。未来迁移到签名 app-like
 | M2-C3 | 50 MB 上限和有界缓存 | M2-C2 |
 | M2-C4 | 连接、进度和同步状态 UI | M2-B4 |
 | M2-C5 | 启动、前台和手动触发 | M2-B4 |
-| M2-C6 | BackgroundTasks 尽力同步 | M2-C5 |
+| M2-C6 | 后台调度尽力同步 | M2-C5 |
 
 M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定性前台流程。
 
@@ -331,6 +337,11 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 | M3-A5 | 保存后增量索引 | M3-A4、M1-B2 |
 | M3-A6 | 待同步状态 | M3-A4、M2-B1 |
 
+M3-A1 至 A5 已完成本地纵切：只编辑已有 `.md`，保存使用原始文本、expected-hash CAS、
+macOS 文件协调、同目录 staging/原子替换和提交结果分级；保存后仅在一个事务中更新当前笔记及其
+Wiki Link。200 个 SwiftPM XCTest 全绿，Xcode App 覆盖率 82.40%，Debug/Release 构建通过。
+M3-A6 与全部远端上传工作仍未开始；M3-C1 的生产 writer 故障注入是下一道写路径门禁。
+
 ### 8.3 工作流 B：条件上传
 
 | ID | 工作项 | 依赖 |
@@ -360,7 +371,7 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 - 磁盘不足、文件替换中断和 App 终止；
 - local-only、remote-only、both-changed 状态矩阵；
 - 412、超时、5xx 和上传后本地再修改；
-- 保存、离线、网络恢复和上传 XCUITest；
+- 保存、离线、网络恢复和上传 macOS UI 自动化；
 - 未编辑内容 byte-preservation golden test。
 
 ### 8.6 退出条件
@@ -394,7 +405,7 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 | M4-08 | 性能和内存优化 | 满足 NFR-03 |
 | M4-09 | 辅助功能验收 | VoiceOver、Dynamic Type、深色模式 |
 | M4-10 | 隐私和安全审查 | 无高危问题 |
-| M4-11 | TestFlight 验收 | 发布候选 |
+| M4-11 | Mac Beta/发布 验收 | 发布候选 |
 | M4-12 | 发布文档和支持说明 | 已知限制、恢复说明 |
 
 ### 9.3 测试
@@ -404,7 +415,7 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 - 解决期间远端二次变化；
 - 索引损坏、账本损坏和 staging 残留；
 - 10,000 Markdown / 2 GB 附件性能；
-- 全量关键 XCUITest；
+- 全量关键 macOS UI 自动化；
 - 安全、隐私和辅助功能审查；
 - 长时间同步和前后台切换稳定性。
 
@@ -416,7 +427,7 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 - Critical/High 安全问题为 0；
 - 一个真实 WebDAV 服务通过发布认证矩阵；
 - 关键 E2E 全绿；
-- TestFlight 验收通过；
+- Mac Beta/发布 验收通过；
 - 形成对外 MVP。
 
 ## 10. M5：后续版本
@@ -454,16 +465,18 @@ V3 必须保持可关闭、可删除，不能改变 Markdown 事实源。
 ```mermaid
 flowchart LR
     M0["M0 工程与 Spike"] --> M1["M1 本地只读"]
-    M1 --> M2["M2 WebDAV 拉取"]
-    M2 --> M3["M3 编辑与上传"]
-    M3 --> M4["M4 冲突与发布"]
+    M1 --> M3A["M3-A1 至 A5 本地编辑"]
+    M3A --> M2["M2 WebDAV 拉取"]
+    M2 --> M3B["M3-A6、B 条件上传"]
+    M3B --> M4["M4 冲突与发布"]
 ```
 
 可并行：
 
 - M1 中解析器、索引基础和只读 UI；
+- M3-A1 至 A5 的原始编辑器、原子写和索引刷新；
 - M2 中 WebDAV 客户端与同步账本基础；
-- M3 中编辑 UI 与 PUT 契约实现；
+- M3 的条件上传只在 M2 后实现；
 - M4 中辅助功能、性能和发布文档。
 
 不可并行绕过：
@@ -471,7 +484,7 @@ flowchart LR
 - 编辑上传不能早于拉取状态模型稳定；
 - 条件 PUT 不能早于真实服务契约验证；
 - 冲突 UI 不能替代冲突副本原子保存；
-- BackgroundTasks 不能早于确定性前台同步；
+- 后台调度不能早于确定性前台同步；
 - 发布不能早于故障注入和账本恢复演练。
 
 ## 12. 测试矩阵
@@ -483,7 +496,7 @@ flowchart LR
 | 文件系统集成 | XCTest + 临时目录 | 是 | 是 | 是 |
 | WebDAV 契约 | 本地 fixture | 是 | 是 | 是 |
 | 真实服务认证 | macOS 本机人工工具 + 专用空目录 | 否 | 阶段人工 | 发布前人工 |
-| UI 关键流 | XCUITest | 冒烟 | 是 | 是 |
+| UI 关键流 | macOS UI 自动化 | 冒烟 | 是 | 是 |
 | 性能 | XCTest metrics | 基准子集 | 是 | 是 |
 | 故障注入 | 自定义适配器 | 关键子集 | 是 | 是 |
 | 安全与依赖 | 静态检查/人工评审 | 是 | 是 | 是 |
@@ -514,7 +527,7 @@ flowchart LR
 | Markdown 被格式化 | 中 | 高 | 原文编辑、byte-preservation golden tests | M1/M3 |
 | 中文搜索效果差 | 中 | 中 | M1 真实语料评测，按结果选择分词 | M0/M1 |
 | 大 Vault 卡顿 | 中 | 高 | 流式枚举、增量索引、有界并发和缓存 | M1/M4 |
-| iOS 后台不可靠 | 高 | 中 | 前台确定触发，后台仅优化 | M2 |
+| macOS 后台调度不可靠 | 高 | 中 | 前台确定触发，后台仅优化 | M2 |
 | 路径穿越或 URL 编码错误 | 中 | 极高 | 单一 VaultPath、同源和根目录校验 | M0/M2 |
 | 真实验证凭据或路径泄漏 | 低 | 极高 | 固定 Keychain 条目、仅交互输入、严格脱敏、禁止 argv/env/抓包 | M0/M2 |
 | 坚果云分页协议未文档化 | 高 | 高 | 不阻塞本地 M1；不臆造私有 API，能力矩阵明确 `BLOCKED`，取得厂商证据或新 ADR 前不发布坚果云 profile | M2 |
@@ -570,7 +583,7 @@ flowchart LR
 ### 发布
 
 - [ ] 首个真实 WebDAV 服务通过认证矩阵
-- [ ] TestFlight 验收通过
+- [ ] Mac Beta/发布 验收通过
 - [ ] 隐私说明与实际数据行为一致
 - [ ] 已知限制和恢复说明完成
 - [ ] 版本号、迁移和回滚方案确认
@@ -581,11 +594,12 @@ flowchart LR
 
 1. M1-B1 至 B6 已全部完成 RED、GREEN、VERIFY、REVIEW；`index.sqlite` 已具备迁移、事务写入、增量扫描、hash skip、有界查询、可回滚重建和实测中文检索；
 2. M1-C1 已完成：Library 只消费不可变摘要和闭包端口，不直接访问 SQLite；加载、索引、内容、空态和失败均为互斥状态，旧异步结果不能覆盖新刷新；SwiftPM 全量 115 测试通过；
-3. M1-C2 已完成：标签计数、筛选和导航继续复用同一仓储读边界，刷新失败保留旧标签且旧异步结果不能覆盖新结果；SwiftPM 全量 122 测试通过；
+3. M1-C2 已完成：标签计数、筛选和主侧边栏导航继续复用同一仓储读边界与中栏笔记摘要模型，刷新失败保留旧标签、失效选择清空且旧异步结果不能覆盖新结果；SwiftPM 全量 122 测试通过；
 4. M1-C3 已完成：搜索 Feature Model 负责查询取消、过期结果隔离和互斥结果状态，SwiftUI 只消费已有 `search()` 接口与有界摘要；SwiftPM 全量 125 测试通过；
 5. M1-C4 已完成：Reader 从统一本地读取端口消费解析结果，标准 Markdown 转换为闭合渲染值，未知/危险内容安全降级，三个列表入口均可导航阅读；SwiftPM 全量 132 测试通过；
 6. M1-C5 已完成：索引在扫描末尾批量消歧 Wiki Link，Reader 按精确 occurrence 消费解析结果；只有 resolved 的规范路径可跳转，缺失、歧义、非法和伪造内部 URL 均 fail closed；SwiftPM 全量 139 测试通过；
-7. 下一步执行 M1-C6：收藏与最近继续消费索引摘要和明确状态，不把持久化逻辑塞进 SwiftUI；
-8. 坚果云验证工具保留，但不在 M1 期间主动执行。进入 M2 后由 M2-A6 接管真实认证、脱敏报告和分页决策。
+7. M1-C6 已完成：收藏事实只写 `Metadata/user-state.json`，索引仍是可重建派生数据；`AppEnvironment` 统一组装本地 Files、index.sqlite、扫描器和用户状态，空查询直接复用最近排序；SwiftPM 全量 176 测试通过，新增 Reader 收藏状态/写入失败、Favorites/Recent/Library/Reader 离屏渲染以及并发旧写入补偿覆盖；全量生产源码覆盖率约为 region 78.15%、line 78.25%，其中声明式 View 分支拉低总值，核心模型与基础设施维持项目既有 80% 质量门；
+8. M1-C7 已完成：Library、Search、Tags、Reader 在浅色/深色矩阵离屏渲染通过；Reader 外链/Wiki Link 已有独立 AX link，引用、任务、收藏和横向代码滚动的 AX 语义已在 macOS Release 实例核验；普通键盘导航和 macOS UI 启动/主导航冒烟通过。按用户确认，VoiceOver 操作不作为本工作项的退出条件；
+9. 坚果云验证工具保留，但不在 M1 期间主动执行。进入 M2 后由 M2-A6 接管真实认证、脱敏报告和分页决策。
 
 每一步都必须单独完成 RED、GREEN、VERIFY、REVIEW。未通过当前工作项，不提前堆叠下一层概念。

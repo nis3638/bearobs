@@ -16,7 +16,7 @@
 
 ## 2. 三个前提判断
 
-1. **这是真问题**：移动端离线体验与开放 Vault 兼容之间存在真实缺口。
+1. **这是真问题**：桌面端编辑体验与开放 Vault 兼容之间存在真实缺口。
 2. **最简单可行方案**：不建设业务云后端，采用本地优先工作副本和 WebDAV 文件同步。
 3. **最大破坏风险**：错误删除、并发覆盖、路径越界和全文重写。所有写路径都必须晚于只读纵切和同步决策验证。
 
@@ -64,11 +64,11 @@
 
 | 应用域 | 主要模块 | 对外接口 | 承载能力 |
 |---|---|---|---|
-| iOS 前台应用 | Onboarding、Library、Tags、Search、Reader、Editor、Conflicts、Settings | SwiftUI 路由与用户操作 | 连接、浏览、阅读、编辑、冲突处理 |
+| macOS 前台应用 | Onboarding、Library、Tags、Search、Reader、Editor、Conflicts、Settings | SwiftUI + AppKit 路由与用户操作 | 连接、浏览、阅读、编辑、冲突处理 |
 | 应用服务 | VaultUseCases、SearchUseCases、EditUseCases、SyncCoordinator | 用例协议 | 编排业务流程 |
 | 内容服务 | MarkdownParser、MetadataExtractor、LinkResolver、Renderer | 解析和渲染协议 | 标签、链接、阅读 |
 | 数据服务 | VaultRepository、IndexRepository、UserStateRepository、SyncLedgerRepository | 仓储协议 | 文件、索引、偏好和协调状态 |
-| 集成服务 | WebDAVClient、CredentialStore、BackgroundSyncScheduler | 端口协议 | 远端、Keychain、后台调度 |
+| 集成服务 | WebDAVClient、CredentialStore、SyncScheduler | 端口协议 | 远端、Keychain、调度 |
 | 平台支撑 | Logging、Metrics、Clock、FileCoordinator、Reachability | 基础能力接口 | 可观测性、并发、测试替身 |
 
 “能力中心”如果后续出现，应作为这些应用域中的建设包，而不是独立于应用架构的另一套体系。例如“同步能力中心”映射到
@@ -108,24 +108,25 @@ flowchart TD
 
 | 层面 | 技术路线 |
 |---|---|
-| 客户端 | Swift、SwiftUI、iOS 26+；支持所有纳入测试矩阵且能够运行 iOS 26 的目标 iPhone，不限定为 iPhone 17 系列 |
+| 客户端 | Swift、SwiftUI、AppKit、macOS 15+；Mac 为首发平台，iOS 客户端后续复用核心模块 |
 | 并发 | Swift Concurrency；可变共享状态由 actor 或串行数据库写入边界管理 |
 | 网络 | `URLSession`、`XMLParser` 和 RFC 4918 子集 |
 | 数据库 | GRDB 7.x、SQLite、FTS5、显式迁移 |
 | Markdown | `swift-markdown` AST 处理标准 Markdown；Obsidian 扩展由独立扫描器处理 |
 | Frontmatter | YAML 解析器只读取元数据；编辑保存不通过 YAML 序列化器重写全文 |
-| 凭据 | iOS Keychain |
+| 凭据 | macOS Keychain |
 | 文件 | Application Support 下的工作副本、临时写入和原子替换 |
-| 后台 | `BackgroundTasks` 仅作尽力同步 |
-| 测试 | Swift Testing 或 XCTest、XCUITest、可控 WebDAV 测试服务器 |
-| 发布 | Xcode Cloud 或等价 CI、TestFlight、崩溃和性能指标 |
+| Mac Vault 访问 | 通过 NSOpenPanel 选择 Vault；沙盒构建使用 security-scoped bookmark，工作副本和 staging 仍保持路径边界 |
+| 后台 | 首发不依赖系统后台任务；仅保留可取消的前台调度接口 |
+| 测试 | Swift Testing 或 XCTest、macOS UI 自动化、可控 WebDAV 测试服务器 |
+| 发布 | Xcode Cloud 或等价 CI、Mac Beta/签名与公证、崩溃和性能指标 |
 
 当前文档核验的依赖能力：
 
 - M0-07 已验证并精确锁定 GRDB 7.11.1：显式 migration、原生 async read/write、FTS5
-  `unicode61` 和 iOS 26 交叉编译均通过；正式 `index.sqlite` schema 仍由 M1-B1 建立。
+  `unicode61` 和 macOS 交叉编译均通过；正式 `index.sqlite` schema 仍由 M1-B1 建立。
 - M0-08 已验证并精确锁定 `swift-markdown` 0.8.0 与 Yams 6.2.2：标准 Markdown AST、
-  `SourceRange`、只读 Frontmatter、Obsidian 扩展扫描、诊断渲染和 iOS 26 交叉编译均通过；
+  `SourceRange`、只读 Frontmatter、Obsidian 扩展扫描、诊断渲染和 macOS 交叉编译均通过；
   正式 parser、链接解析和原生 Reader 仍由 M1-A2～M1-A5、M1-C4 建立。
 - M0-09 已验证已有文件的 POSIX 原子替换：稳定父目录 descriptor、同目录 exclusive staging、
   完整写入、`fsync`、mode 保留、inode 核对、单次 `rename`、父目录同步和重读校验；提交前、
@@ -311,14 +312,14 @@ BearObsApp
 
 目标：证明技术边界可行。
 
-- 建立独立 Git 仓库和 iOS 26 工程；
+- 建立独立 Git 仓库和 macOS 15 工程；
 - 建立 CI、测试 target、格式化和安全基线；
 - 验证 GRDB FTS5、`swift-markdown`、原子文件替换；
 - 建立 Golden Vault 和 WebDAV fixture；
 - 冻结路径、同步状态和错误模型；
 - 选定首个真实 WebDAV 认证服务。
 
-### M1 本地只读纵切
+### M1 Mac 本地只读纵切
 
 目标：不联网完成有用产品闭环。
 
@@ -328,7 +329,7 @@ BearObsApp
 - 列表、标签、搜索、阅读、Wiki Link 和收藏；
 - 索引重建与性能基线。
 
-### M2 WebDAV 拉取技术预览
+### M2 Mac WebDAV 拉取技术预览
 
 目标：得到可靠的离线工作副本。
 
@@ -340,7 +341,7 @@ BearObsApp
 - 前台触发和可恢复错误；
 - RFC fixture 与首个真实服务契约测试。
 
-### M3 编辑与条件上传
+### M3 Mac 编辑与条件上传
 
 目标：安全开放写路径。
 
@@ -352,7 +353,7 @@ BearObsApp
 - 网络失败重试；
 - 无冲突编辑闭环。
 
-### M4 冲突与发布加固
+### M4 Mac 冲突与发布加固
 
 目标：满足对外 MVP 发布标准。
 
@@ -360,12 +361,13 @@ BearObsApp
 - 冲突列表和解决流程；
 - 故障注入；
 - 性能、辅助功能和隐私；
-- TestFlight 验收；
+- Mac Beta/签名与公证验收；
 - 安全与兼容性审查。
 
-### M5 后续能力
+### M5 iOS 客户端与后续能力
 
 - App 内创建、删除和重命名；
+- iOS 原生客户端，复用 M0-M4 的 Domain、Markdown、Index 和 Sync 模块；
 - 跨设备收藏；
 - Backlinks、Daily Note 和快捷创建；
 - 更多 WebDAV 认证服务；
@@ -379,11 +381,11 @@ M5 不得反向污染 M0-M4 的范围。
 | 决策点 | 截止阶段 | 判断依据 |
 |---|---|---|
 | 首个 WebDAV 认证服务 | M2 开始前 | 用户实际环境和可自动化测试能力 |
-| GRDB 锁定版本 | M0 结束 | iOS 26、当前 Swift 工具链和 FTS5 Spike |
+| GRDB 锁定版本 | M0 结束 | macOS 15、当前 Swift 工具链和 FTS5 Spike |
 | FTS5 中文检索策略 | M1 结束 | 真实中文 Vault 的召回率和延迟 |
 | 自定义 Markdown 渲染范围 | M1 早期 | 标准语法和大文档性能 |
 | 无 ETag 服务的写入支持 | M2 结束 | 是否存在可验证的安全条件写策略 |
-| 后台同步策略 | M4 | 真机测量，不影响确定性前台同步 |
+| 后台同步策略 | M4 | Mac 长时间运行测量，不影响确定性前台同步 |
 
 ## 13. 架构风险与反模式
 
@@ -396,7 +398,7 @@ M5 不得反向污染 M0-M4 的范围。
 - 把同步账本和可删除索引放在同一重建流程中；
 - 递归信任服务返回路径；
 - 在 UI 主线程做 Vault 全量扫描和 hash；
-- 因为 iOS 有 BackgroundTasks 就承诺实时同步；
+- 因为 macOS 支持常驻进程就承诺实时同步；
 - 为尚不存在的多人协作、插件或 AI 需求预埋复杂框架。
 
 ## 14. 技术完成判定

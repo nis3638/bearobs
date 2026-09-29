@@ -18,3 +18,6 @@ Config/Secrets.xcconfig
 *.env
 .env.*
 !.env.example
+
+# Local tooling state
+.v2c/

@@ -44,6 +44,25 @@ final class IndexTagRepositoryTests: XCTestCase {
 
         XCTAssertEqual(notes.map(\.path.description), ["new.md", "old.md"])
     }
+
+    func testSelectingParentTagDoesNotIncludeNotesTaggedOnlyWithItsChild() async throws {
+        let repository = try makeRepository()
+        try await insert("---\ntags: [project]\n---\nparent", at: "parent.md", in: repository)
+        try await insert(
+            "---\ntags: [project/mobile]\n---\nchild",
+            at: "child.md",
+            in: repository
+        )
+        let tags = try await repository.libraryTags()
+        let parentTag = try XCTUnwrap(tags.first { $0.normalizedName == "project" })
+        let childTag = try XCTUnwrap(tags.first { $0.normalizedName == "project/mobile" })
+
+        let parentNotes = try await repository.libraryNotes(taggedWith: parentTag)
+        let childNotes = try await repository.libraryNotes(taggedWith: childTag)
+
+        XCTAssertEqual(parentNotes.map(\.path.description), ["parent.md"])
+        XCTAssertEqual(childNotes.map(\.path.description), ["child.md"])
+    }
 }
 
 extension IndexTagRepositoryTests {

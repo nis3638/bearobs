@@ -6,9 +6,15 @@ import SwiftUI
 
 @main
 struct BearObsApp: App {
+    @State private var workspace: AppWorkspaceModel
+
+    init() {
+        _workspace = State(initialValue: AppWorkspaceModel())
+    }
+
     var body: some Scene {
         WindowGroup {
-            ProjectShellView()
+            ProjectShellView(workspace: workspace)
         }
     }
 }

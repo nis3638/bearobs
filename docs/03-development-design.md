@@ -7,7 +7,7 @@
 
 ## 1. 设计目标
 
-本设计服务于 iOS 26+ 对外 MVP。目标设备是所有纳入兼容性测试且能够运行 iOS 26 的 iPhone，不限定为 iPhone 17 系列。设计重点保证：
+本设计服务于 macOS 15+ 对外 MVP。首发目标是纳入兼容性测试的 Mac；iOS 客户端在 Mac MVP 稳定后复用核心模块建设。设计重点保证：
 
 - 本地工作副本优先，网络不阻塞内容访问；
 - Markdown 和附件保持 Obsidian 兼容；
@@ -33,7 +33,7 @@
 - 完整 Obsidian 插件与语法兼容；
 - 跨设备收藏；
 - 业务云后端；
-- 富文本和 Live Preview；
+- 富文本编辑和 AST 全文回写（原位编辑的编辑即预览由 ADR-009 与 REQ-002 约束）；
 - AI 能力。
 
 ## 3. 四类架构设计
@@ -96,7 +96,7 @@ flowchart TB
 - 自定义源码扫描器解析 Obsidian 扩展并保留源码范围。
 - `URLSession` 和 `XMLParser` 实现受控 WebDAV 子集。
 - Keychain 保存凭据。
-- XCUITest 覆盖原生 iOS 关键流程。
+- macOS UI 自动化覆盖原生 Mac 关键流程。
 
 ## 4. 建议工程结构
 
@@ -668,8 +668,10 @@ sequenceDiagram
 ### 13.1 主要导航
 
 - Onboarding：连接、验证、首次同步；
-- Library：全部、收藏、最近、标签；
-- Search：输入、结果和空状态；
+- 主工作区使用 macOS 原生 `NavigationSplitView` 固定三栏职责：最左侧主侧边栏负责系统入口和标签树，
+  次左侧栏只负责当前条件下的笔记摘要列表，右侧栏只负责选中笔记的 Reader/Editor 或未选择提示；
+- 主侧边栏的系统入口为全部笔记、最近、收藏和搜索；标签作为可折叠树直接位于同一侧边栏，不再占用笔记列表栏；
+- 标签树显示嵌套层级，但每个可选节点仍以完整 normalized identity 查询，父级补齐节点仅作分组；
 - Reader：Markdown、Wiki Link、图片；
 - Editor：原始 Markdown、脏状态、保存结果；
 - Conflicts：冲突列表、双方预览和解决；
@@ -712,10 +714,11 @@ sequenceDiagram
   count，不建立第二套标签状态或把 occurrence 在 UI 内重新去重；
 - 选择标签时只把仓储返回的 `IndexedTagSummary` 传回仓储，SQL 使用参数绑定精确匹配 normalized
   identity；结果复用 Library 的摘要结构和 modifiedAt/path 稳定排序；
-- 标签列表与标签笔记页分别拥有互斥状态。刷新失败继续显示上次标签并明确提示，取消恢复旧状态，
-  后发请求阻止旧结果覆盖；
-- App 顶层使用原生 TabView 提供“笔记”“标签”和“搜索”三个入口。Reader 跳转仍等待 C4，
-  不在标签行或搜索结果行里直接读取 Markdown。
+- 标签导航与标签笔记结果由同一个 `TagsFeatureModel` 持有：标签刷新状态、当前完整 identity、
+  笔记查询状态和操作隔离规则集中在一个模型中；旧 `TaggedNotesFeatureModel` 仅作为兼容 facade，
+  不再由主工作区创建第二套活动查询；
+- 选择标签只更新 `NavigationSplitView` 的中栏内容，不把标签集合替换进中栏，也不自动打开第一篇笔记；
+  标签不存在、无匹配、查询失败和刷新竞态分别映射为清选择、空态、固定错误态和后发结果胜出。
 
 ### 13.6 搜索切片
 
@@ -740,6 +743,10 @@ sequenceDiagram
   user/password 的 URL 降级为不可点击标签，避免把 Vault 内容变成任意系统动作入口；
 - Reader 状态为 loading、content、failure，operation ID 阻止旧读取覆盖新结果，取消恢复旧内容。
   Library、Tags 和 Search 只传规范路径并共享同一 Reader 端口。
+- REQ-002 将编辑态建模为同一详情栏的局部状态：`ReaderView` 仅在当前内容区域替换阅读渲染为
+  `InlineMarkdownEditor`，不创建 `sheet`、模态或第二份笔记容器。`EditorFeatureModel` 仍是唯一的
+  原文、草稿、保存快照和并发保护事实源；保存成功后刷新同一路径的 Reader，失败信息和重试动作留在
+  当前详情栏，未保存草稿离开前仍走统一确认。
 
 ### 13.8 Wiki Link 跳转切片
 
@@ -875,7 +882,7 @@ WebDAV 测试矩阵至少覆盖：
 
 ### 17.5 UI 测试
 
-使用 XCUITest 覆盖：
+使用 macOS UI 自动化覆盖：
 
 - 首次连接和错误配置；
 - 首次同步；

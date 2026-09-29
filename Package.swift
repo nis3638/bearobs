@@ -5,8 +5,9 @@ import PackageDescription
 let package = Package(
     name: "BearObsDomain",
     platforms: [
-        .iOS(.v26),
         .macOS(.v15),
+        // Keep the domain packages reusable for the deferred iOS client.
+        .iOS(.v26),
     ],
     products: [
         .library(name: "BearObsDomain", targets: ["BearObsDomain"]),
@@ -77,7 +78,14 @@ let package = Package(
         ),
         .executableTarget(
             name: "BearObsAppShell",
-            dependencies: ["BearObsLibrary", "BearObsUserState"],
+            dependencies: [
+                "BearObsDomain",
+                "BearObsIndex",
+                "BearObsLibrary",
+                "BearObsLocalVault",
+                "BearObsMarkdown",
+                "BearObsUserState",
+            ],
             path: "BearObs/App"
         ),
         .testTarget(

@@ -80,7 +80,7 @@ if [[ "$history_secret_found" == true ]]; then
     exit 1
 fi
 
-if find "$ROOT_DIR/BearObs.xcodeproj" -path '*/xcuserdata/*' -print -quit | grep -q .; then
+if git -C "$ROOT_DIR" ls-files | grep -Eq '(^|/)xcuserdata/'; then
     echo "User-specific Xcode data must not be committed." >&2
     exit 1
 fi

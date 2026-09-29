@@ -35,6 +35,12 @@ public struct FavoriteDataSource: Sendable {
     ) async throws -> Set<VaultPath> {
         try await setFavoriteOperation(path, isFavorite)
     }
+
+    public static let empty = FavoriteDataSource(
+        loadNotes: { [] },
+        loadFavoritePaths: { [] },
+        setFavorite: { _, _ in [] }
+    )
 }
 
 public enum FavoritesFailure: Equatable, Sendable {
@@ -58,15 +64,23 @@ public enum FavoritesViewState: Equatable, Sendable {
     }
 }
 
+public enum FavoriteUpdateResult: Equatable, Sendable {
+    case updated
+    case cancelled
+    case failed
+}
+
 @MainActor
 @Observable
 public final class FavoritesFeatureModel {
     public private(set) var state: FavoritesViewState = .loading
     public private(set) var favoritePaths: Set<VaultPath> = []
+    public private(set) var hasLoaded = false
 
     private let source: FavoriteDataSource
     private var indexedNotes: [IndexedNoteSummary] = []
     private var operationID = UUID()
+    private var desiredFavoriteStates: [VaultPath: Bool] = [:]
 
     public init(source: FavoriteDataSource) {
         self.source = source
@@ -76,36 +90,70 @@ public final class FavoritesFeatureModel {
         await loadLatestState()
     }
 
+    public func loadIfNeeded() async {
+        guard !hasLoaded else { return }
+        await loadLatestState()
+    }
+
     public func reload() async {
         await loadLatestState()
     }
 
     public func setFavorite(_ path: VaultPath, isFavorite: Bool) async {
+        _ = await updateFavorite(path, isFavorite: isFavorite)
+    }
+
+    @discardableResult
+    public func updateFavorite(
+        _ path: VaultPath,
+        isFavorite: Bool
+    ) async -> FavoriteUpdateResult {
+        if !hasLoaded {
+            await loadIfNeeded()
+            guard hasLoaded else { return .failed }
+        }
         let operationID = beginOperation()
         let previousState = state
         let previousFavoritePaths = favoritePaths
+        desiredFavoriteStates[path] = isFavorite
 
         do {
             let favoritePaths = try await source.setFavorite(path, isFavorite: isFavorite)
-            guard self.operationID == operationID else { return }
+            guard self.operationID == operationID else {
+                await reconcileStaleWrite(path, operationID: operationID)
+                return .cancelled
+            }
             self.favoritePaths = favoritePaths
             state = Self.loadedState(notes: indexedNotes, favoritePaths: favoritePaths)
+            return .updated
         } catch is CancellationError {
-            guard self.operationID == operationID else { return }
+            guard self.operationID == operationID else { return .cancelled }
             favoritePaths = previousFavoritePaths
             state = previousState
+            return .cancelled
         } catch {
-            guard self.operationID == operationID else { return }
+            guard self.operationID == operationID else {
+                await reconcileStaleWrite(path, operationID: operationID)
+                return .cancelled
+            }
             favoritePaths = previousFavoritePaths
             state = .failure(
                 .updateFailed,
                 visibleNotes: previousState.visibleNotes
             )
+            return .failed
         }
     }
 
     public func isFavorite(_ path: VaultPath) -> Bool {
         favoritePaths.contains(path)
+    }
+
+    private func reconcileStaleWrite(_ path: VaultPath, operationID: UUID) async {
+        guard self.operationID != operationID,
+            let desired = desiredFavoriteStates[path]
+        else { return }
+        _ = try? await source.setFavorite(path, isFavorite: desired)
     }
 
     private func loadLatestState() async {
@@ -123,6 +171,7 @@ public final class FavoritesFeatureModel {
             indexedNotes = notes
             self.favoritePaths = favoritePaths
             state = Self.loadedState(notes: notes, favoritePaths: favoritePaths)
+            hasLoaded = true
         } catch is CancellationError {
             guard self.operationID == operationID else { return }
             state = previousState

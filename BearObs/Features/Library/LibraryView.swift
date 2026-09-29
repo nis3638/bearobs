@@ -7,10 +7,19 @@ import SwiftUI
 public struct LibraryView: View {
     @State private var model: LibraryFeatureModel
     private let readerSource: ReaderDataSource
+    private let favoritesModel: FavoritesFeatureModel?
+    private let recentModel: SearchFeatureModel?
 
-    public init(model: LibraryFeatureModel, readerSource: ReaderDataSource = .unavailable) {
+    public init(
+        model: LibraryFeatureModel,
+        readerSource: ReaderDataSource = .unavailable,
+        favoritesModel: FavoritesFeatureModel? = nil,
+        recentModel: SearchFeatureModel? = nil
+    ) {
         _model = State(initialValue: model)
         self.readerSource = readerSource
+        self.favoritesModel = favoritesModel
+        self.recentModel = recentModel
     }
 
     public var body: some View {
@@ -50,6 +59,33 @@ public struct LibraryView: View {
 
     private func notesList(_ notes: [IndexedNoteSummary], status: LibraryListStatus?) -> some View {
         List {
+            if favoritesModel != nil || recentModel != nil {
+                Section("浏览") {
+                    if let recentModel {
+                        NavigationLink {
+                            RecentView(
+                                model: recentModel,
+                                readerSource: readerSource,
+                                favorites: favoritesModel
+                            )
+                        } label: {
+                            Label("最近", systemImage: "clock")
+                        }
+                        .accessibilityIdentifier("library-recent-entry")
+                    }
+                    if let favoritesModel {
+                        NavigationLink {
+                            FavoritesView(
+                                model: favoritesModel,
+                                readerSource: readerSource
+                            )
+                        } label: {
+                            Label("收藏", systemImage: "star")
+                        }
+                        .accessibilityIdentifier("library-favorites-entry")
+                    }
+                }
+            }
             if let status {
                 Section {
                     LibraryStatusRow(status: status) {
@@ -60,7 +96,11 @@ public struct LibraryView: View {
             Section("全部笔记") {
                 ForEach(notes) { note in
                     NavigationLink {
-                        ReaderView(path: note.path, source: readerSource)
+                        ReaderView(
+                            path: note.path,
+                            source: readerSource,
+                            favorites: favoritesModel
+                        )
                     } label: {
                         LibraryNoteRow(note: note)
                     }
@@ -107,6 +147,7 @@ private struct LibraryStatusRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(failure.title)
                         .font(.subheadline.weight(.semibold))
@@ -118,45 +159,74 @@ private struct LibraryStatusRow: View {
                 Button("重试", action: retry)
                     .buttonStyle(.borderless)
             }
-            .accessibilityElement(children: .combine)
         }
     }
 }
 
-struct LibraryNoteRow: View {
+public struct LibraryNoteRow: View {
     let note: IndexedNoteSummary
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    var body: some View {
+    public init(note: IndexedNoteSummary) {
+        self.note = note
+    }
+
+    public var body: some View {
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(statusColor)
                 .frame(width: 3)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(note.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(note.modifiedAt, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                titleAndDate
                 if !note.preview.isEmpty {
                     Text(note.preview)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
                 if note.parseStatus != .complete {
-                    Label(note.parseStatus.label, systemImage: note.parseStatus.symbolName)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(statusColor)
+                    Label {
+                        Text(note.parseStatus.label)
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: note.parseStatus.symbolName)
+                            .foregroundStyle(statusColor)
+                    }
+                    .font(.caption2.weight(.medium))
                 }
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var titleAndDate: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 3) {
+                title
+                modifiedDate
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline) {
+                title
+                Spacer(minLength: 8)
+                modifiedDate
+            }
+        }
+    }
+
+    private var title: some View {
+        Text(note.title)
+            .font(.headline)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    }
+
+    private var modifiedDate: some View {
+        Text("修改于 \(note.modifiedAt, style: .relative)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private var statusColor: Color {
@@ -165,6 +235,26 @@ struct LibraryNoteRow: View {
         case .degraded: .orange
         case .failed: .red
         }
+    }
+}
+
+enum LibraryAccessibilityText {
+    static func favoriteButtonLabel(
+        isReady: Bool,
+        isFavorite: Bool,
+        isUpdating: Bool = false
+    ) -> String {
+        if isUpdating { return "正在更新收藏状态" }
+        guard isReady else { return "正在读取收藏状态" }
+        return isFavorite ? "取消收藏" : "收藏"
+    }
+
+    static func favoriteButtonHint(isFavorite: Bool) -> String {
+        isFavorite ? "将这篇笔记从收藏中移除" : "将这篇笔记添加到收藏"
+    }
+
+    static func tagLabel(name: String, noteCount: Int) -> String {
+        "\(name)，\(noteCount) 篇笔记"
     }
 }
 

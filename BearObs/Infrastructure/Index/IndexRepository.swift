@@ -125,6 +125,18 @@ public final class SQLiteIndexRepository: Sendable {
         }
     }
 
+    public func replaceAndResolveWikiLinks(_ input: IndexNoteInput) async throws {
+        try Task.checkCancellation()
+        try await databasePool.write { database in
+            let affectedTags = try tagNames(at: input.path, in: database)
+                .union(input.tags.map(\.normalizedName))
+            try replace(input, in: database)
+            try normalizeTags(affectedTags, in: database)
+            try resolveWikiLinks(from: input.path, in: database)
+        }
+        try Task.checkCancellation()
+    }
+
     public func remove(_ path: VaultPath) async throws {
         try await databasePool.write { database in
             let affectedTags = try tagNames(at: path, in: database)

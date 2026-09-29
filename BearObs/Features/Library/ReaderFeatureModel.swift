@@ -51,25 +51,81 @@ public enum ReaderViewState: Equatable, Sendable {
     case failure
 }
 
+public enum ReaderFavoriteFailure: Equatable, Sendable {
+    case loadFailed
+    case updateFailed
+}
+
 @MainActor
 @Observable
 public final class ReaderFeatureModel {
     public let path: VaultPath
     public private(set) var state: ReaderViewState
+    public private(set) var favoriteFailure: ReaderFavoriteFailure?
+    public private(set) var isUpdatingFavorite = false
 
     private let source: ReaderDataSource
+    private let favorites: FavoritesFeatureModel?
     private var operationID = UUID()
+    private var favoriteOperationID = UUID()
 
     var dataSource: ReaderDataSource { source }
+    var favoritesModel: FavoritesFeatureModel? { favorites }
+    var hasFavorites: Bool { favorites != nil }
 
     public init(
         path: VaultPath,
         source: ReaderDataSource,
-        initialState: ReaderViewState = .loading
+        initialState: ReaderViewState = .loading,
+        favorites: FavoritesFeatureModel? = nil
     ) {
         self.path = path
         self.source = source
+        self.favorites = favorites
         state = initialState
+        favoriteFailure = nil
+    }
+
+    public var isFavorite: Bool {
+        favorites?.isFavorite(path) ?? false
+    }
+
+    public var favoriteStatusIsReady: Bool {
+        favorites?.hasLoaded ?? false
+    }
+
+    public func loadFavoriteStatus() async {
+        guard let favorites else { return }
+        favoriteFailure = nil
+        await favorites.loadIfNeeded()
+        if !favorites.hasLoaded {
+            favoriteFailure = .loadFailed
+        }
+    }
+
+    public func toggleFavorite() async {
+        guard let favorites, !isUpdatingFavorite else { return }
+        isUpdatingFavorite = true
+        defer { isUpdatingFavorite = false }
+        let operationID = UUID()
+        favoriteOperationID = operationID
+        favoriteFailure = nil
+        await favorites.loadIfNeeded()
+        guard self.favoriteOperationID == operationID, favorites.hasLoaded else {
+            if self.favoriteOperationID == operationID {
+                favoriteFailure = .loadFailed
+            }
+            return
+        }
+        let result = await favorites.updateFavorite(path, isFavorite: !isFavorite)
+        guard self.favoriteOperationID == operationID else { return }
+        if result == .failed {
+            favoriteFailure = .updateFailed
+        }
+    }
+
+    public func dismissFavoriteFailure() {
+        favoriteFailure = nil
     }
 
     public func load() async {

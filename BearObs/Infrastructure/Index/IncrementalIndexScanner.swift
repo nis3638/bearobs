@@ -123,6 +123,35 @@ public actor IncrementalIndexScanner {
         )
     }
 
+    public func refresh(_ path: VaultPath) async throws {
+        try Task.checkCancellation()
+        let snapshot = try store.read(
+            path,
+            maximumRetainedBytes: limits.maximumNoteBytes
+        )
+        guard let data = snapshot.data else {
+            try await replaceFailure(snapshot, diagnostic: "markdown.note-too-large")
+            return
+        }
+        do {
+            let parsed = try MarkdownNoteParser.parse(data, at: path, limits: limits)
+            try await repository.replaceAndResolveWikiLinks(
+                try IndexNoteInput(
+                    path: path,
+                    parsedNote: parsed,
+                    contentHash: snapshot.contentHash,
+                    modifiedAt: snapshot.metadata.modifiedAt,
+                    byteSize: snapshot.metadata.byteSize
+                )
+            )
+        } catch let error as MarkdownParseError {
+            try await replaceFailure(
+                snapshot,
+                diagnostic: try Self.failureDiagnostic(error)
+            )
+        }
+    }
+
     public func rebuild() async throws -> FullIndexRebuildReport {
         let files = try store.markdownFiles()
         let store = self.store

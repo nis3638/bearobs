@@ -2,7 +2,7 @@
 
 ## 范围
 
-本基线只覆盖独立 Git 边界、iOS 26+ SwiftUI 工程、测试 targets、CI、依赖与配置管理、
+本基线只覆盖独立 Git 边界、macOS 15+ SwiftUI/AppKit 工程、测试 targets、CI、依赖与配置管理、
 M0-05 Golden Vault、M0-06 可控 WebDAV fixture、M0-07 GRDB/FTS5 Spike、M0-08 Markdown
 Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目录固定为
 `/Users/ivows/workspace/bearobs`，默认分支为 `main`；父目录仓库不再承载 BearObs 历史。
@@ -11,7 +11,7 @@ Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目
 
 ## 工程约束
 
-- Xcode 固定为 `.xcode-version` 中的 26.5，最低部署版本为 iOS 26.0。
+- Xcode 固定为 `.xcode-version` 中的 26.5，最低部署版本为 macOS 15.0。
 - 工程保持一个 App target、一个 Unit Test target、一个 UI Test target。
 - 共享 `BearObs` scheme 必须提交；CI 不读取 `xcuserdata`。
 - Bundle ID 集中在 `Config/App.xcconfig`，当前初始化值为 `com.ivows.bearobs`。
@@ -21,19 +21,19 @@ Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目
 
 ```bash
 make check      # swift-format、秘密模式和工程卫生检查
-make build      # Debug + Release simulator build
+make build      # Debug + Release macOS build
 make test       # Unit Test + UI Test
 make coverage   # Unit Test coverage，输出到 .build/reports/
-make spike-grdb # GRDB/FTS5 测试、覆盖率门禁和 iOS 26 交叉编译
-make spike-markdown # Markdown 测试、覆盖率门禁和 iOS 26 交叉编译
-make spike-atomic-write # 原子替换、SIGKILL、覆盖率和 iOS 26 交叉编译
-make domain-model # 领域模型 host XCTest、覆盖率和 iOS 26 交叉编译
+make spike-grdb # GRDB/FTS5 测试、覆盖率门禁和 macOS 15 交叉编译
+make spike-markdown # Markdown 测试、覆盖率门禁和 macOS 15 交叉编译
+make spike-atomic-write # 原子替换、SIGKILL、覆盖率和 macOS 15 交叉编译
+make domain-model # 领域模型 host XCTest、覆盖率和 macOS 15 交叉编译
 make ci         # 与 CI 相同的完整顺序
 ```
 
-可用 `CI_DESTINATION='platform=iOS Simulator,id=<UDID>' make test` 显式指定模拟器。
-未指定时，脚本用固定的 iOS 26.5 runtime 和 iPhone 16 device type 创建一次性 Simulator，
-执行后自动删除。可用 `CI_DEVICE_TYPE` 显式替换 device type，但 CI 基线不使用浮动目标。
+可用 `CI_DESTINATION='platform=macOS' make test` 显式指定 Mac 测试目标。
+未指定时，脚本使用当前 macOS host 作为默认测试目标。可用 `CI_DEVICE_TYPE` 显式替换目标，
+但 CI 基线不使用浮动目标。
 
 ## 覆盖率口径
 
@@ -76,9 +76,9 @@ make ci         # 与 CI 相同的完整顺序
 - 11 个 XCTest 契约已通过 Swift 6 严格并发 `build-for-testing`，WebDAV 目录已验证复制到
   Unit Test bundle。
 
-本机当前没有已安装的 iOS Simulator runtime，`simctl list runtimes` 为空，因此本轮
-`make test` 无法启动运行目标。该环境缺口不影响无 Simulator 行为验证、Debug/Release 构建
-或 test bundle 编译；安装 iOS 26.5 runtime 后，现有 test plan 会直接执行这些 XCTest。
+本机当前没有可用的 macOS UI 自动化运行目标，因此本轮
+`make test` 无法启动运行目标。该环境缺口不影响 host 行为验证、Debug/Release 构建
+或 test bundle 编译；配置可用的 Mac UI 测试目标后，现有 test plan 会直接执行这些 XCTest。
 
 该 fixture 只证明 HTTP 客户端接缝，不证明真实 TLS、认证 challenge、重定向或厂商方言；
 这些仍由 M0-11 和 M2-A6 的真实服务认证负责。
@@ -94,9 +94,9 @@ make ci         # 与 CI 相同的完整顺序
 - 批处理中途注入 SQLite 错误后，已经执行的普通表和 FTS 变更全部回滚；
 - 10,000 条合成数据多轮 Release 单事务写入观测为 2.855～3.204 秒，每轮 30 次唯一词
   搜索 P95 为 0.302～0.330 毫秒；
-- Spike 源码行覆盖率为 99.02%，region 覆盖率为 95.00%，arm64 iOS 26 Release 交叉编译通过。
+- Spike 源码行覆盖率为 99.02%，region 覆盖率为 95.00%，arm64 macOS 15 Release 交叉编译通过。
 
-10k 数字来自 arm64 macOS 26.5 开发机，只是工程基线，不替代最低目标 iPhone 真机的
+10k 数字来自 arm64 macOS 26.5 开发机，只是工程基线，不替代最低目标 Mac 真机的
 NFR-03 验收。`unicode61` 只确认大小写、音调符号和连续中文短语的已知行为；中文分词质量
 仍须在 M1 使用真实合成/授权语料测量。
 
@@ -114,10 +114,10 @@ NFR-03 验收。`unicode61` 只确认大小写、音调符号和连续中文短�
   代码/URL/HTML 排除、链接可见文字、Wiki Link/Embed 转义、Golden Vault 契约、Unicode、
   BOM、LF/CRLF、无效 UTF-8、1 MiB 和 256 小文件；
 - 本机三次 Release 基线为 1 MiB 约 74.6～101.9 毫秒、256 个小文件约 22.6～40.5 毫秒；
-  源码行覆盖率 93.74%，arm64 iOS 26 Release 交叉编译通过。
+  源码行覆盖率 93.74%，arm64 macOS 15 Release 交叉编译通过。
 
 这些性能数字来自 arm64 macOS 26.5 开发机，只证明方案没有明显数量级问题，不替代最低目标
-iPhone 的 NFR。`diagnosticHTML` 是依赖输出的未清洗诊断值，禁止进入 WebView 或作为可信 HTML；
+Mac 的 NFR。`diagnosticHTML` 是依赖输出的未清洗诊断值，禁止进入 WebView 或作为可信 HTML；
 M1 Reader 必须建立原生渲染边界。Spike 不解析链接目标路径、不决定同名链接、不写回 YAML，
 也不冻结 M1 的领域模型。生产入口还必须加入文件大小/YAML 复杂度上限。
 
@@ -136,10 +136,10 @@ M1 Reader 必须建立原生渲染边界。Spike 不解析链接目标路径、�
   records，因此临时以 region ≥ 80% 加显式故障/分支矩阵门禁，不能把 `0/0` 冒充 branch
   coverage 通过；独立子进程在 7 个 staging/publish 边界接受 SIGKILL 后，父进程只观察到
   完整旧版或完整新版；
-- arm64 iOS 26 Release 交叉编译通过。
+- arm64 macOS 15 Release 交叉编译通过。
 
 SIGKILL 只证明进程终止，不冒充物理断电测试。Spike 不承诺 ACL、extended attributes、
-ownership、iOS Data Protection、祖先目录 symlink、Vault containment 或 expected-hash/CAS；
+ownership、macOS Keychain 与文件访问保护、祖先目录 symlink、Vault containment 或 expected-hash/CAS；
 inode 核对只是 best-effort，`fstatat -> renameat/unlinkat` 仍有非原子 check/use 窗口，不等于
 内容级并发控制；M3 必须用 Vault actor、文件协调、expected hash 和恢复策略闭合。崩溃残留
 staging 没有 action ledger 时不得自动提升。
@@ -160,10 +160,10 @@ staging 没有 action ledger 时不得自动提升。
   correlation ID，不接受 URL、header、底层描述或正文；
 - 22 个 host XCTest 全部通过，覆盖路径编码/Unicode/穿越、同步矩阵、账本恢复、CAS 和错误
   映射；Domain region coverage 98.89%、line coverage 99.44%，Xcode test bundle 编译和
-  arm64 iOS 26 Release 交叉编译通过。
+  arm64 macOS 15 Release 交叉编译通过。
 
 本地未安装 Simulator runtime 时，`make domain-model` 仍执行同一组纯领域 XCTest；完整 App
-`make test` 继续要求 CI 或开发机安装与 `.xcode-version` 匹配的 iOS runtime。M0-10 不实现
+`make test` 继续要求 CI 或开发机安装与 `.xcode-version` 匹配的 macOS SDK。M0-10 不实现
 WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲突副本生命周期。
 
 ## M1 Markdown 生产解析边界
@@ -192,7 +192,7 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   部分 `ParsedNote`；
 - M1-A5 新增 22 个 XCTest，SwiftPM 全量 77 测试通过；`MarkdownNoteParser.swift` region
   88.17%、line 95.08%，相关生产文件总 region 92.81%、line 96.53%。Xcode 26 未生成 Swift
-  branch records，因此继续使用 region ≥ 80% 加显式分支矩阵；`make check` 与 iOS 26 Release
+  branch records，因此继续使用 region ≥ 80% 加显式分支矩阵；`make check` 与 macOS 15 Release
   交叉编译通过。本机未安装 Simulator runtime，Xcode scheme 的最终 build/test 重跑仍属于上文
   已记录的基础设施缺口；
 - 扫描和聚合层仍不做路径解析、同名消歧、附件存在性、HTML 渲染或智能摘要；这些能力必须由
@@ -213,10 +213,10 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   的持续更新仍必须由 B2 在与普通表相同的事务中完成；
 - 7 个 XCTest 覆盖新库建表、真实磁盘重开幂等、v1→v2 `unicode61` 回填、v2 失败不误记、外键
   级联、非法状态/range 拒绝和重复 target occurrence 保真；`IndexSchema.swift` region/line 均为
-  100%，SwiftPM 全量 84 测试、`make check` 和 arm64 iOS 26 Release 交叉编译通过；
-- Xcode 已成功解析并锁定 GRDB，App 与 Unit Test targets 均完成项目接线。本机未安装可用的 iOS
-  26.5 runtime/platform destination，因此 scheme build/test 无法启动；该环境缺口不影响上述 host
-  测试和 iOS SDK 交叉编译证据。
+  100%，SwiftPM 全量 84 测试、`make check` 和 arm64 macOS 15 Release 交叉编译通过；
+- Xcode 已成功解析并锁定 GRDB，App 与 Unit Test targets 均完成项目接线。本机未安装可用的 Mac UI
+  test destination，因此 scheme build/test 无法启动；该环境缺口不影响上述 host
+  测试和 macOS SDK 交叉编译证据。
 
 ## M1 `index.sqlite` 生产索引与搜索边界
 
@@ -239,7 +239,7 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   trigger 失败时旧 notes、occurrence 和双 FTS 保持完整可用；重建永不修改 `sync.sqlite`、
   Markdown 字节或用户状态；
 - M1-B2 至 B6 共新增 24 个索引/文件读取测试；SwiftPM 全量 108 测试通过，全量生产源码
-  region 92.44%、line 96.83%；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+  region 92.44%、line 96.83%；`make check` 与 arm64 macOS 15 Release 交叉编译通过。
 
 ## M1-C1 Library 只读边界
 
@@ -251,8 +251,8 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   相对修改时间以及带图标和文字的降级/失败状态；加载、索引、空态和错误都有独立可访问标识；
 - C1 新增 7 个仓储/Feature Model 测试，SwiftPM 全量 115 测试通过；包含声明式 SwiftUI View 的
   全量生产源码 region 86.31%、line 89.05%，排除纯布局后的核心逻辑 region 92.13%、line 96.87%。
-  App 壳纳入独立 SwiftPM executable target，host 编译与 arm64 iOS 26 Release 交叉编译通过；本机
-  缺 iOS 26.5 platform component，Xcode generic device build 在编译前被 destination 检查阻断，
+  App 壳纳入独立 SwiftPM executable target，host 编译与 arm64 macOS 15 Release 交叉编译通过；本机
+  缺可用的 Mac UI 测试 destination，Xcode UI build 在编译前被 destination 检查阻断，
   未把该基础设施缺口记为源码通过。
 
 ## M1-C2 标签导航边界
@@ -261,11 +261,12 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   `IndexedNoteSummary`，使用参数绑定并复用 modifiedAt/path 稳定排序；
 - 标签列表和标签笔记页各自使用闭合状态枚举。刷新失败保留旧标签并显示固定提示，取消恢复旧状态，
   operation ID 阻止慢的旧查询覆盖新结果；UI 不重新解析标签，也不直接读取 Markdown；
-- App 壳使用原生 TabView 暴露“笔记”和“标签”，按标签进入 NavigationStack 子页；状态不只依赖
-  颜色，空态和错误均提供明确文字；
+- App 壳使用 macOS 原生 `NavigationSplitView` 固定“主侧边栏导航与标签树—笔记列表—详情”三栏；
+  标签直接在最左侧可折叠树中选择，标签结果复用中栏笔记摘要列表，不进入独立标签页；状态不只依赖颜色，
+  空态和错误均提供明确文字；
 - C2 新增 7 个仓储/Feature Model 测试，SwiftPM 全量 122 测试通过；包含两个声明式 SwiftUI View
   的全量生产源码 region 83.77%、line 85.66%，排除纯布局后的核心逻辑 region 92.00%、line
-  96.95%；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+  96.95%；`make check` 与 arm64 macOS 15 Release 交叉编译通过。
 
 ## M1-C3 搜索和摘要边界
 
@@ -277,7 +278,7 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   降级状态同时使用文字和图标。结果打开 Reader 明确保留给 C4；
 - C3 新增 3 个 Feature Model 测试，SwiftPM 全量 125 测试通过；全量生产源码 region 81.86%、line
   83.27%，排除三个纯声明式 SwiftUI View 后核心逻辑 region 91.77%、line 96.91%，Search Feature
-  Model line 97.14%；10,000 篇中文合成语料本轮查询 P95 0.831 毫秒；arm64 iOS 26 Release
+  Model line 97.14%；10,000 篇中文合成语料本轮查询 P95 0.831 毫秒；arm64 macOS 15 Release
   交叉编译通过。
 
 ## M1-C4 Markdown Reader 边界
@@ -292,7 +293,7 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
 - Library、Tags、Search 三个入口均按 path 导航到 Reader；C4 新增 6 个渲染、状态、真实本地适配
   和 SwiftUI 离屏渲染测试，SwiftPM 全量 132 测试通过；全量生产源码 region 80.81%、line 81.56%，
   排除四个纯声明式 View 后核心逻辑 region 90.46%、line 96.47%；10,000 篇中文检索本轮 P95
-  0.806 毫秒；`make check` 与 arm64 iOS 26 Release 交叉编译通过。
+  0.806 毫秒；`make check` 与 arm64 macOS 15 Release 交叉编译通过。
 
 ## M1-C5 Wiki Link 跳转边界
 
@@ -308,8 +309,44 @@ WebDAV origin 映射、symlink-safe containment、I/O 执行器、账本或冲�
   和所有不合法 Vault path；普通 HTTP/HTTPS/mailto 仍遵守 C4 的外部链接白名单；
 - C5 新增 7 个仓储、渲染、路由和真实扫描到 Reader 集成测试，SwiftPM 全量 139 测试通过；全量
   生产源码 region 81.20%、line 82.56%；10,000 篇中文检索本轮 P95 0.836 毫秒；`make check`、
-  Xcode 工程解析、pbxproj 校验和 arm64 iOS 26 Release 交叉编译通过。本机仍无可用 iOS Simulator
+  Xcode 工程解析、pbxproj 校验和 arm64 macOS 15 Release 交叉编译通过。本机仍无可用 macOS UI 运行环境
   runtime，因此没有伪报模拟器测试。
+
+## M1-C6 收藏与最近内容边界
+
+- 收藏事实只保存在当前本地 Vault 的 `Metadata/user-state.json`，由 `FileUserStateStore` actor
+  通过同目录临时文件、`fsync` 和单次 `rename` 原子提交；索引重建、扫描和删除绝不修改收藏状态，
+  stale path 只在展示层与当前索引求交，不做静默迁移或清理；
+- `AppEnvironment` 是生产组合根，按固定的 `Application Support/BearObs/Vaults/default/`
+  布局创建 `Files/`、`Metadata/`，并将 `LocalVaultStore`、`SQLiteIndexRepository`、
+  `IncrementalIndexScanner`、`FileUserStateStore` 组装到 Library、Tags、Search、Favorites、Recent
+  和 Reader 的应用端口；索引首次读取由一个 actor 门控扫描，避免最近/收藏读取看到尚未建立的空索引；
+- 所有入口共享同一个 `FavoritesFeatureModel`。Reader 首次进入并行加载正文和持久化收藏状态，
+  状态未就绪或更新中禁用星标；底层写失败只映射固定文案并保留旧内存状态。并发旧写入完成后按
+  最新用户意图补偿一次底层幂等写，确保 UI 与磁盘最终一致；
+- 最近页不新增数据表或缓存，空查询直接复用 `SQLiteIndexRepository.search("")` 的
+  `modified_at DESC, path` 稳定排序；收藏页只展示索引中仍存在的收藏，Reader、Wiki Link 递归导航
+  始终沿用同一 favorites 模型和 reader source；
+- C6 SwiftPM 全量 176 测试通过，包含持久化收藏、Reader 首次加载、双向星标、失败恢复、并发旧写入
+  补偿以及 Favorites/Recent/Library/Reader 离屏渲染；`swift-format lint --strict`、`git diff --check`、
+  pbxproj 校验和 arm64 macOS 15 Release 交叉编译通过。
+
+## M1-C7 可访问性自动化边界
+
+- Library 与 Search 摘要行在普通字号维持紧凑横向标题/日期，在辅助功能字号切换为纵向并取消
+  标题和摘要截断；Tags 名称与计数同样在辅助功能字号强制纵向，避免压缩后仍被错误判定为可用布局；
+- Reader Markdown 标题同时暴露 header trait 和 H1-H6 heading level，引用竖线与分隔线从
+  VoiceOver 树隐藏；不得把可能包含 URL/Wiki Link 的列表正文合并为静态元素，必须保留内部链接动作
+  和横向代码滚动语义；
+- 收藏按钮分别朗读“正在读取收藏状态”“正在更新收藏状态”“收藏”“取消收藏”，并提供添加/移除
+  hint；Tag 行使用单一“名称，N 篇笔记”标签。失败和解析状态正文使用系统 primary，橙/红/黄只
+  强化图标，任何状态都不只依赖颜色；
+- 自动化矩阵在 390x844、Dynamic Type AX5 下分别渲染 light/dark 的 Library、Search、Tags 和
+  Reader 内容，并固定收藏/标签朗读文案契约；macOS UI 自动化 以 AX5 + Dark 启动并检查三个 Tab 可操作。
+  ImageRenderer 只证明布局可生成，不等价于无截断、对比度审计或 VoiceOver 可操作性验收；
+- M1-C7 只有在可用 macOS UI 运行环境上人工走查主导航、Reader heading、标准/Wiki Link、
+  引用、任务列表、收藏按钮和代码横向滚动后才能标记完成。当前机器缺可用 Simulator runtime，
+  因此本节记录自动化完成，人工验收仍开放。
 
 ## 依赖与配置
 

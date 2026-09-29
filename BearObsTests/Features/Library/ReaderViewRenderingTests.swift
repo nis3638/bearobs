@@ -3,6 +3,7 @@ import XCTest
 
 #if SWIFT_PACKAGE
     import BearObsDomain
+    import BearObsIndex
     import BearObsMarkdown
     @testable import BearObsLibrary
 #else
@@ -76,5 +77,372 @@ final class ReaderViewRenderingTests: XCTestCase {
         ] {
             XCTAssertNil(ReaderInternalRoute.path(from: forged), forged.absoluteString)
         }
+    }
+
+    func testInlineEditorRendersInsideTheReaderContentArea() async throws {
+        let path = try VaultPath(decodedRelativePath: "Inline.md")
+        let document = EditorDocument(
+            text: "# Inline\n\nEditable body.",
+            contentHash: try ContentHash(hex: String(repeating: "a", count: 64)),
+            sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+        )
+        let editor = EditorFeatureModel(
+            path: path,
+            source: EditorDataSource(
+                load: { _ in document },
+                save: { request in
+                    EditorDocument(
+                        text: request.text,
+                        contentHash: document.contentHash,
+                        sourceInfo: request.sourceInfo
+                    )
+                }
+            )
+        )
+        await editor.load()
+
+        let renderer = ImageRenderer(
+            content: InlineMarkdownEditor(
+                model: editor,
+                finishEditing: {},
+                retryReaderLoad: {}
+            )
+            .frame(width: 760, height: 520)
+        )
+
+        XCTAssertNotNil(renderer.cgImage)
+    }
+
+    func testInlineEditorKeepsLoadFailureInTheReaderContentArea() async throws {
+        let path = try VaultPath(decodedRelativePath: "Unavailable.md")
+        let editor = EditorFeatureModel(
+            path: path,
+            source: EditorDataSource(
+                load: { _ in throw RenderFailure.expected },
+                save: { _ in throw RenderFailure.expected }
+            )
+        )
+        await editor.load()
+
+        let renderer = ImageRenderer(
+            content: InlineMarkdownEditor(
+                model: editor,
+                finishEditing: {},
+                retryReaderLoad: {}
+            )
+            .frame(width: 760, height: 520)
+        )
+
+        XCTAssertNotNil(renderer.cgImage)
+    }
+
+    func testFavoritesAndRecentViewsRenderTheirNavigationClosure() async throws {
+        let path = try VaultPath(decodedRelativePath: "Recent.md")
+        let note = IndexedNoteSummary(
+            path: path,
+            title: "Recent",
+            preview: "Preview",
+            modifiedAt: .distantPast,
+            parseStatus: .complete
+        )
+        let hit = IndexSearchHit(
+            path: path,
+            title: note.title,
+            preview: note.preview,
+            parseStatus: note.parseStatus,
+            modifiedAt: note.modifiedAt
+        )
+        let favorites = FavoritesFeatureModel(
+            source: FavoriteDataSource(
+                loadNotes: { [note] },
+                loadFavoritePaths: { [path] },
+                setFavorite: { _, _ in [path] }
+            )
+        )
+        let recent = SearchFeatureModel(source: SearchDataSource { _ in [hit] })
+        await favorites.load()
+        await recent.search("")
+
+        let favoritesRenderer = ImageRenderer(
+            content: NavigationStack {
+                FavoritesView(
+                    model: favorites,
+                    readerSource: .unavailable
+                )
+            }
+            .frame(width: 390, height: 700)
+        )
+        let recentRenderer = ImageRenderer(
+            content: NavigationStack {
+                RecentView(
+                    model: recent,
+                    readerSource: .unavailable,
+                    favorites: favorites
+                )
+            }
+            .frame(width: 390, height: 700)
+        )
+
+        XCTAssertNotNil(favoritesRenderer.cgImage)
+        XCTAssertNotNil(recentRenderer.cgImage)
+    }
+
+    func testLibraryEntriesAndReaderFavoriteToolbarRenderWithSharedState() async throws {
+        let path = try VaultPath(decodedRelativePath: "Shared.md")
+        let note = makeNote(path: path)
+        let hit = makeHit(from: note)
+        let favorites = FavoritesFeatureModel(
+            source: FavoriteDataSource(
+                loadNotes: { [note] },
+                loadFavoritePaths: { [path] },
+                setFavorite: { _, _ in [path] }
+            )
+        )
+        let library = LibraryFeatureModel(
+            source: LibraryDataSource(load: { [note] }, refresh: {})
+        )
+        let recent = SearchFeatureModel(source: SearchDataSource { _ in [hit] })
+        await favorites.load()
+        await library.load()
+        await recent.search("")
+        let document = MarkdownRenderDocument(
+            title: "Shared",
+            blocks: [.paragraph([.text("Body")])]
+        )
+        let reader = ReaderFeatureModel(
+            path: path,
+            source: ReaderDataSource { _ in document },
+            initialState: .content(document),
+            favorites: favorites
+        )
+
+        let libraryRenderer = ImageRenderer(
+            content: LibraryView(
+                model: library,
+                readerSource: .unavailable,
+                favoritesModel: favorites,
+                recentModel: recent
+            )
+            .frame(width: 390, height: 700)
+        )
+        let readerRenderer = ImageRenderer(
+            content: NavigationStack {
+                ReaderView(model: reader)
+            }
+            .frame(width: 390, height: 700)
+        )
+
+        XCTAssertNotNil(libraryRenderer.cgImage)
+        XCTAssertNotNil(readerRenderer.cgImage)
+    }
+
+    func testFavoritesAndRecentBoundaryStatesRender() async throws {
+        let path = try VaultPath(decodedRelativePath: "Stable.md")
+        let note = makeNote(path: path)
+        let loadingFavorites = FavoritesFeatureModel(source: .empty)
+        let emptyFavorites = FavoritesFeatureModel(source: .empty)
+        let failedFavorites = FavoritesFeatureModel(
+            source: FavoriteDataSource(
+                loadNotes: { throw RenderFailure.expected },
+                loadFavoritePaths: { [] },
+                setFavorite: { _, _ in [] }
+            )
+        )
+        let updateFailedFavorites = FavoritesFeatureModel(
+            source: FavoriteDataSource(
+                loadNotes: { [note] },
+                loadFavoritePaths: { [path] },
+                setFavorite: { _, _ in throw RenderFailure.expected }
+            )
+        )
+        await emptyFavorites.load()
+        await failedFavorites.load()
+        await updateFailedFavorites.load()
+        await updateFailedFavorites.setFavorite(path, isFavorite: false)
+
+        let loadingRecent = SearchFeatureModel(source: .empty)
+        let emptyRecent = SearchFeatureModel(source: .empty)
+        let failedRecent = SearchFeatureModel(
+            source: SearchDataSource { _ in throw RenderFailure.expected }
+        )
+        await emptyRecent.search("")
+        await failedRecent.search("")
+
+        let views: [AnyView] = [
+            AnyView(FavoritesView(model: loadingFavorites)),
+            AnyView(FavoritesView(model: emptyFavorites)),
+            AnyView(FavoritesView(model: failedFavorites)),
+            AnyView(FavoritesView(model: updateFailedFavorites)),
+            AnyView(RecentView(model: loadingRecent)),
+            AnyView(RecentView(model: emptyRecent)),
+            AnyView(RecentView(model: failedRecent)),
+        ]
+
+        for view in views {
+            let renderer = ImageRenderer(
+                content: NavigationStack { view }
+                    .frame(width: 390, height: 700)
+            )
+            XCTAssertNotNil(renderer.cgImage)
+        }
+    }
+
+    func testAccessibilityCopyDescribesMeaningWithoutRelyingOnColorOrIcon() {
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonLabel(
+                isReady: false,
+                isFavorite: false
+            ),
+            "正在读取收藏状态"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonLabel(
+                isReady: true,
+                isFavorite: false,
+                isUpdating: true
+            ),
+            "正在更新收藏状态"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonLabel(
+                isReady: true,
+                isFavorite: false
+            ),
+            "收藏"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonHint(isFavorite: false),
+            "将这篇笔记添加到收藏"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonLabel(
+                isReady: true,
+                isFavorite: true
+            ),
+            "取消收藏"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.favoriteButtonHint(isFavorite: true),
+            "将这篇笔记从收藏中移除"
+        )
+        XCTAssertEqual(
+            LibraryAccessibilityText.tagLabel(name: "项目", noteCount: 3),
+            "项目，3 篇笔记"
+        )
+    }
+
+    func testReaderAccessibilitySegmentsExposeLinkDestinations() throws {
+        let internalPath = try VaultPath(decodedRelativePath: "目标笔记.md")
+        let externalURL = URL(string: "https://example.com")!
+        let inline: [MarkdownRenderInline] = [
+            .text("前缀 "),
+            .link(content: [.text("外部链接")], destination: externalURL),
+            .text(" 和 "),
+            .wikiLink(
+                label: "内部链接",
+                target: "目标笔记",
+                resolution: .resolved(internalPath)
+            ),
+        ]
+
+        let segments = ReaderAttributedText.accessibilitySegments(inline)
+
+        XCTAssertEqual(segments.map(\.label), ["前缀 ", "外部链接", " 和 ", "内部链接"])
+        XCTAssertNil(segments[0].destination)
+        XCTAssertEqual(segments[1].destination, externalURL)
+        XCTAssertEqual(segments[3].destination, ReaderInternalRoute.url(for: internalPath))
+    }
+
+    func testPrimaryContentRendersAtLargestAccessibilitySizeInBothColorSchemes() throws {
+        let path = try VaultPath(decodedRelativePath: "很长的辅助功能字号验证标题.md")
+        let note = IndexedNoteSummary(
+            path: path,
+            title: "很长的辅助功能字号验证标题",
+            preview: "摘要在大字体下仍保留可读的布局，并允许系统语义颜色适配外观。",
+            modifiedAt: .distantPast,
+            parseStatus: .degraded
+        )
+        let hit = makeHit(from: note)
+        let blocks: [MarkdownRenderBlock] = [
+            .heading(level: 1, content: [.text("可访问的 Reader 标题")]),
+            .quote([.paragraph([.text("引用内容")])]),
+            .unorderedList([
+                MarkdownRenderListItem(
+                    task: .checked,
+                    blocks: [.paragraph([.text("已完成任务")])]
+                )
+            ]),
+            .codeBlock(language: "swift", code: "let accessible = true"),
+        ]
+
+        for colorScheme in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(
+                content: ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        LibraryNoteRow(note: note)
+                        SearchResultRow(hit: hit)
+                        ReaderBlocksView(blocks: blocks)
+                    }
+                    .padding()
+                }
+                .frame(width: 390, height: 844)
+                .environment(\.dynamicTypeSize, .accessibility5)
+                .environment(\.colorScheme, colorScheme)
+            )
+
+            XCTAssertNotNil(renderer.cgImage, "Failed in \(colorScheme) mode")
+        }
+    }
+
+    func testTagListRendersAtLargestAccessibilitySizeInBothColorSchemes() async {
+        let tag = IndexedTagSummary(
+            normalizedName: "accessibility",
+            displayName: "很长的辅助功能标签名称",
+            noteCount: 12_345
+        )
+        let model = TagsFeatureModel(
+            source: TagLibraryDataSource(
+                loadTags: { [tag] },
+                loadNotes: { _ in [] }
+            )
+        )
+        await model.load()
+
+        for colorScheme in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(
+                content: TagsView(model: model)
+                    .frame(width: 390, height: 844)
+                    .environment(\.dynamicTypeSize, .accessibility5)
+                    .environment(\.colorScheme, colorScheme)
+            )
+
+            XCTAssertNotNil(renderer.cgImage, "Failed in \(colorScheme) mode")
+        }
+    }
+}
+
+extension ReaderViewRenderingTests {
+    private enum RenderFailure: Error {
+        case expected
+    }
+
+    private func makeNote(path: VaultPath) -> IndexedNoteSummary {
+        IndexedNoteSummary(
+            path: path,
+            title: path.fileNameWithoutExtension,
+            preview: "Preview",
+            modifiedAt: .distantPast,
+            parseStatus: .complete
+        )
+    }
+
+    private func makeHit(from note: IndexedNoteSummary) -> IndexSearchHit {
+        IndexSearchHit(
+            path: note.path,
+            title: note.title,
+            preview: note.preview,
+            parseStatus: note.parseStatus,
+            modifiedAt: note.modifiedAt
+        )
     }
 }

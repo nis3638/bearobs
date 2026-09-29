@@ -6,11 +6,18 @@ import SwiftUI
 
 public struct TagsView: View {
     @State private var model: TagsFeatureModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let readerSource: ReaderDataSource
+    private let favorites: FavoritesFeatureModel?
 
-    public init(model: TagsFeatureModel, readerSource: ReaderDataSource = .unavailable) {
+    public init(
+        model: TagsFeatureModel,
+        readerSource: ReaderDataSource = .unavailable,
+        favorites: FavoritesFeatureModel? = nil
+    ) {
         _model = State(initialValue: model)
         self.readerSource = readerSource
+        self.favorites = favorites
     }
 
     public var body: some View {
@@ -57,23 +64,47 @@ public struct TagsView: View {
         List {
             if showsFailure {
                 Section {
-                    Label("标签更新失败，正在显示上次结果", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                    Label {
+                        Text("标签更新失败，正在显示上次结果")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
             ForEach(tags) { tag in
                 NavigationLink {
                     TaggedNotesView(
-                        model: model.notesModel(for: tag),
-                        readerSource: readerSource
+                        model: model,
+                        tag: tag,
+                        readerSource: readerSource,
+                        favorites: favorites
                     )
                 } label: {
-                    HStack {
-                        Label(tag.displayName, systemImage: "number")
-                        Spacer()
-                        Text("\(tag.noteCount) 篇")
-                            .foregroundStyle(.secondary)
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Label(tag.displayName, systemImage: "number")
+                                Text("\(tag.noteCount) 篇")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            HStack {
+                                Label(tag.displayName, systemImage: "number")
+                                Spacer(minLength: 8)
+                                Text("\(tag.noteCount) 篇")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        LibraryAccessibilityText.tagLabel(
+                            name: tag.displayName,
+                            noteCount: tag.noteCount
+                        )
+                    )
                 }
             }
         }
@@ -82,36 +113,51 @@ public struct TagsView: View {
 }
 
 private struct TaggedNotesView: View {
-    @State var model: TaggedNotesFeatureModel
+    let model: TagsFeatureModel
+    let tag: IndexedTagSummary
     let readerSource: ReaderDataSource
+    let favorites: FavoritesFeatureModel?
 
     var body: some View {
         content
-            .navigationTitle(model.tag.displayName)
-            .task { await model.load() }
+            .navigationTitle(tag.displayName)
+            .task(id: tag.normalizedName) { await model.select(tag: tag) }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch model.state {
-        case .loading:
+        if model.selectedTag?.normalizedName != tag.normalizedName {
             ProgressView("正在加载笔记")
-        case .content(let notes):
-            List(notes) { note in
-                NavigationLink {
-                    ReaderView(path: note.path, source: readerSource)
-                } label: {
-                    LibraryNoteRow(note: note)
+        } else {
+            switch model.selectedNotesState {
+            case .loading:
+                ProgressView("正在加载笔记")
+            case .content(let notes):
+                List(notes) { note in
+                    NavigationLink {
+                        ReaderView(
+                            path: note.path,
+                            source: readerSource,
+                            favorites: favorites
+                        )
+                    } label: {
+                        LibraryNoteRow(note: note)
+                    }
                 }
-            }
-            .accessibilityIdentifier("tagged-notes-list")
-        case .empty:
-            ContentUnavailableView("没有匹配的笔记", systemImage: "doc.text.magnifyingglass")
-        case .failure:
-            ContentUnavailableView {
-                Label("无法加载笔记", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text("请返回后重试。")
+                .accessibilityIdentifier("tagged-notes-list")
+            case .empty:
+                ContentUnavailableView("没有匹配的笔记", systemImage: "doc.text.magnifyingglass")
+            case .failure:
+                ContentUnavailableView {
+                    Label("无法加载笔记", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("请返回后重试。")
+                } actions: {
+                    Button("重试") {
+                        Task { await model.select(tag: tag) }
+                    }
+                }
+                .accessibilityIdentifier("tagged-notes-error")
             }
         }
     }

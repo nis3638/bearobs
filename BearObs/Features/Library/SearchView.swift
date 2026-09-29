@@ -8,10 +8,16 @@ public struct SearchView: View {
     @State private var model: SearchFeatureModel
     @State private var query = ""
     private let readerSource: ReaderDataSource
+    private let favorites: FavoritesFeatureModel?
 
-    public init(model: SearchFeatureModel, readerSource: ReaderDataSource = .unavailable) {
+    public init(
+        model: SearchFeatureModel,
+        readerSource: ReaderDataSource = .unavailable,
+        favorites: FavoritesFeatureModel? = nil
+    ) {
         _model = State(initialValue: model)
         self.readerSource = readerSource
+        self.favorites = favorites
     }
 
     public var body: some View {
@@ -32,7 +38,11 @@ public struct SearchView: View {
         case .content(let hits):
             List(hits) { hit in
                 NavigationLink {
-                    ReaderView(path: hit.path, source: readerSource)
+                    ReaderView(
+                        path: hit.path,
+                        source: readerSource,
+                        favorites: favorites
+                    )
                 } label: {
                     SearchResultRow(hit: hit)
                 }
@@ -61,36 +71,67 @@ public struct SearchView: View {
     }
 }
 
-private struct SearchResultRow: View {
+public struct SearchResultRow: View {
     let hit: IndexSearchHit
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    var body: some View {
+    public init(hit: IndexSearchHit) {
+        self.hit = hit
+    }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(hit.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(hit.modifiedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            titleAndDate
             if !hit.preview.isEmpty {
                 Text(hit.preview)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
             }
             if hit.parseStatus != .complete {
-                Label(
-                    hit.parseStatus == .degraded ? "部分内容未能索引" : "内容无法索引",
-                    systemImage: "exclamationmark.circle"
-                )
+                Label {
+                    Text(
+                        hit.parseStatus == .degraded
+                            ? "部分内容未能索引"
+                            : "内容无法索引"
+                    )
+                    .foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.orange)
+                }
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.orange)
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var titleAndDate: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 3) {
+                title
+                modifiedDate
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline) {
+                title
+                Spacer(minLength: 8)
+                modifiedDate
+            }
+        }
+    }
+
+    private var title: some View {
+        Text(hit.title)
+            .font(.headline)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    }
+
+    private var modifiedDate: some View {
+        Text("修改于 \(hit.modifiedAt, style: .relative)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }
