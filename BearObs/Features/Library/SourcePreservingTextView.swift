@@ -60,13 +60,18 @@ struct SourcePreservingTextView: NSViewRepresentable {
     }
 
     /// NSTextView subclass owning the hooks SwiftUI cannot reach: the Command-S
-    /// key equivalent, the Escape path, and input-method marked-text
-    /// notifications. TextKit 1 is constructed explicitly so the character and
-    /// glyph mapping used for UTF-8 restoration stays deterministic.
+    /// key equivalent, the Escape path, input-method marked-text
+    /// notifications, and the checkbox press target (REQ-002 P4). TextKit 1 is
+    /// constructed explicitly so the character and glyph mapping used for
+    /// UTF-8 restoration stays deterministic.
     final class EditorTextView: NSTextView {
         var onCommandSave: (() -> Void)?
         var onCommandEscape: (() -> Void)?
         var onMarkedTextChange: ((Bool) -> Void)?
+        /// Called for a plain single click with the point in view coordinates.
+        /// Returns true when the press was consumed (checkbox toggle) so the
+        /// event must not fall through to selection handling.
+        var onPressAtPoint: ((NSPoint) -> Bool)?
 
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             if event.type == .keyDown,
@@ -77,6 +82,18 @@ struct SourcePreservingTextView: NSViewRepresentable {
                 return true
             }
             return super.performKeyEquivalent(with: event)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.type == .leftMouseDown,
+                event.clickCount == 1,
+                event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+                let onPressAtPoint,
+                onPressAtPoint(convert(event.locationInWindow, from: nil))
+            {
+                return
+            }
+            super.mouseDown(with: event)
         }
 
         override func cancelOperation(_ sender: Any?) {
@@ -133,6 +150,10 @@ struct SourcePreservingTextView: NSViewRepresentable {
         private weak var observedScrollView: NSScrollView?
         private var hasRestoredInitialContext = false
         private var coordinateMapCache: (text: String, map: MarkdownTextCoordinateMap)?
+        /// VoiceOver announcements for task and opaque-region interaction.
+        /// The default posts an accessibility announcement; tests inject a
+        /// recorder.
+        var accessibilityAnnouncer: ((String) -> Void)?
 
         private struct SelectionAnchor: Equatable {
             let anchorUTF8: Int
@@ -160,7 +181,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
             scrollView.drawsBackground = false
 
             let storage = NSTextStorage(string: parent.text)
-            let layoutManager = NSLayoutManager()
+            let layoutManager = EditorSurfaceLayoutManager()
             storage.addLayoutManager(layoutManager)
             let container = NSTextContainer(
                 size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
@@ -207,6 +228,18 @@ struct SourcePreservingTextView: NSViewRepresentable {
             textView.onMarkedTextChange = { [weak self] active in
                 self?.parent.onMarkedTextChange(active)
             }
+            textView.onPressAtPoint = { [weak self, weak textView] point in
+                guard let self, let textView else { return false }
+                return self.handlePress(at: point, in: textView)
+            }
+            accessibilityAnnouncer = { [weak textView] message in
+                guard let textView else { return }
+                NSAccessibility.post(
+                    element: textView,
+                    notification: .announcementRequested,
+                    userInfo: [.announcement: message]
+                )
+            }
             textView.typingAttributes = MarkdownEditorPresentation().baseAttributes
 
             scrollView.documentView = textView
@@ -220,6 +253,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
             )
 
             applyProjectionIfChanged(to: textView, in: scrollView)
+            refreshInteraction(in: textView, announcing: false)
             restoreInitialContext(in: scrollView)
             return scrollView
         }
@@ -236,6 +270,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
                 }
             }
             applyProjectionIfChanged(to: textView, in: scrollView)
+            refreshInteraction(in: textView, announcing: false)
         }
 
         // MARK: - NSTextViewDelegate
@@ -253,6 +288,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
             let selection = savedSelection(in: textView)
             lastReportedSelection = selection
             parent.onSelectionChange(selection.anchorUTF8, selection.headUTF8)
+            refreshInteraction(in: textView, announcing: false)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -264,21 +300,150 @@ struct SourcePreservingTextView: NSViewRepresentable {
             guard selection != lastReportedSelection else { return }
             lastReportedSelection = selection
             parent.onSelectionChange(selection.anchorUTF8, selection.headUTF8)
+            refreshInteraction(in: textView, announcing: true)
         }
 
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard let url = link as? URL, url.scheme == "bearobs-task" else { return false }
-
-            let content = textView.string as NSString
-            let markerRange = Self.markerRange(containing: charIndex, in: content)
-            guard markerRange.location != NSNotFound else { return true }
-            let replacement = content.substring(with: markerRange) == "[x]" ? "[ ]" : "[x]"
-            guard textView.shouldChangeText(in: markerRange, replacementString: replacement) else {
-                return true
+            guard let url = link as? URL, url.scheme == EditorTaskMarkerLink.scheme else {
+                return false
             }
-            textView.textStorage?.replaceCharacters(in: markerRange, with: replacement)
-            textView.didChangeText()
+            guard
+                let editorTextView = textView as? EditorTextView,
+                let storage = editorTextView.textStorage,
+                storage.length > 0
+            else { return true }
+            let clamped = min(max(0, charIndex), storage.length - 1)
+            // The link attribute run is the marker; fall back to a narrow text
+            // search when attributes are stale. Either way `toggleTaskMarker`
+            // verifies the bytes are exactly `[ ]`/`[x]` before rewriting.
+            let markerRange =
+                (editorTextView.layoutManager as? EditorSurfaceLayoutManager)?
+                .taskMarkerRange(containingUTF16: clamped)
+                ?? Self.markerRange(containing: clamped, in: editorTextView.string as NSString)
+            guard markerRange.location != NSNotFound else { return true }
+            toggleTaskMarker(range: markerRange, in: editorTextView)
             return true
+        }
+
+        // MARK: - Task marker and opaque interaction (REQ-002 P4)
+
+        private func handlePress(at viewPoint: NSPoint, in textView: EditorTextView) -> Bool {
+            guard
+                let container = textView.textContainer,
+                let layoutManager = textView.layoutManager as? EditorSurfaceLayoutManager
+            else { return false }
+            let containerPoint = NSPoint(
+                x: viewPoint.x - textView.textContainerOrigin.x,
+                y: viewPoint.y - textView.textContainerOrigin.y
+            )
+            guard
+                let marker = layoutManager.taskMarkerRange(at: containerPoint, in: container)
+            else { return false }
+            return toggleTaskMarker(range: marker, in: textView)
+        }
+
+        /// Replaces exactly the current `[ ]`/`[x]` bytes at `range` with the
+        /// opposite marker. The edit goes through the text view's own editing
+        /// pipeline, so it is undoable and reaches the model through the same
+        /// draft callback as typing — there is no second save path.
+        @discardableResult
+        func toggleTaskMarker(range: NSRange, in textView: EditorTextView) -> Bool {
+            guard
+                let storage = textView.textStorage,
+                storage.length > 0,
+                range.location != NSNotFound,
+                range.location >= 0,
+                NSMaxRange(range) <= storage.length
+            else { return false }
+            let current = storage.attributedSubstring(from: range).string
+            let replacement: String
+            switch current {
+            case "[ ]": replacement = "[x]"
+            case "[x]": replacement = "[ ]"
+            default: return false
+            }
+            guard textView.shouldChangeText(in: range, replacementString: replacement) else {
+                return false
+            }
+            storage.replaceCharacters(in: range, with: replacement)
+            textView.didChangeText()
+            announce(current == "[ ]" ? "已完成任务" : "未完成任务")
+            return true
+        }
+
+        /// Recomputes the focus-sensitive presentation after a selection or
+        /// draft change: invalidates the drawing of regions whose focus state
+        /// flipped, refreshes the accessibility actions for the task under the
+        /// caret, and — for user-driven changes — announces entering a task
+        /// line or a local source region.
+        private func refreshInteraction(in textView: EditorTextView, announcing: Bool) {
+            guard
+                let layoutManager = textView.layoutManager as? EditorSurfaceLayoutManager
+            else { return }
+            let previousSelection = layoutManager.selection
+            let newSelection = textView.selectedRange()
+            let previousFocus = layoutManager.interactionFocus(forSelection: previousSelection)
+            layoutManager.selection = newSelection
+            let newFocus = layoutManager.interactionFocus(forSelection: newSelection)
+            if previousFocus != newFocus {
+                var affected: [NSRange] = []
+                for marker in previousFocus.focusedMarkers + newFocus.focusedMarkers {
+                    affected.append(layoutManager.lineRange(containingUTF16: marker))
+                }
+                if previousFocus.hasFocusedOpaque { affected.append(previousFocus.focusedOpaque) }
+                if newFocus.hasFocusedOpaque { affected.append(newFocus.focusedOpaque) }
+                for range in affected where range.location != NSNotFound {
+                    layoutManager.invalidateDisplay(forCharacterRange: range)
+                }
+            }
+            updateAccessibilityActions(in: textView)
+            guard announcing else { return }
+            let previousMarkers = Set(previousFocus.focusedMarkers.map(\.location))
+            if let marker = newFocus.focusedMarkers.first(where: {
+                !previousMarkers.contains($0.location)
+            }),
+                let storage = textView.textStorage,
+                NSMaxRange(marker) <= storage.length
+            {
+                let isChecked = storage.attributedSubstring(from: marker).string == "[x]"
+                announce(isChecked ? "已完成任务" : "未完成任务")
+            }
+            if newFocus.hasFocusedOpaque,
+                newFocus.focusedOpaque.location != previousFocus.focusedOpaque.location
+            {
+                announce("局部源码区域")
+            }
+        }
+
+        /// One accessibility action for the task item under the caret; its
+        /// name states the current state so VoiceOver reads out 未完成/已完成.
+        private func updateAccessibilityActions(in textView: EditorTextView) {
+            guard
+                let layoutManager = textView.layoutManager as? EditorSurfaceLayoutManager,
+                let storage = textView.textStorage,
+                storage.length > 0
+            else { return }
+            let selection = textView.selectedRange()
+            let head = min(max(0, selection.location), storage.length - 1)
+            guard
+                let marker = layoutManager.taskMarkerOnLine(containingUTF16Location: head),
+                NSMaxRange(marker) <= storage.length
+            else {
+                textView.setAccessibilityCustomActions([])
+                return
+            }
+            let isChecked = storage.attributedSubstring(from: marker).string == "[x]"
+            textView.setAccessibilityCustomActions([
+                NSAccessibilityCustomAction(name: isChecked ? "标记为未完成" : "标记为已完成") {
+                    [weak self, weak textView] in
+                    guard let self, let textView else { return false }
+                    return self.toggleTaskMarker(range: marker, in: textView)
+                }
+            ])
+        }
+
+        private func announce(_ message: String) {
+            accessibilityAnnouncer?(message)
         }
 
         // MARK: - External synchronization
@@ -608,23 +773,25 @@ private struct MarkdownEditorPresentation {
     func attributes(for token: MarkdownEditorStyleToken) -> [NSAttributedString.Key: Any] {
         switch token {
         case .heading(let level):
-            [
+            return [
                 .font: Self.headingFont(level: level),
                 .paragraphStyle: Self.headingParagraphStyle,
             ]
         case .listItem:
-            [.paragraphStyle: Self.listParagraphStyle]
+            return [.paragraphStyle: Self.listParagraphStyle]
         case .quote:
-            [
+            return [
                 .foregroundColor: NSColor.secondaryLabelColor,
                 .paragraphStyle: Self.quoteParagraphStyle,
             ]
         case .codeBlock:
-            Self.codeAttributes
+            return Self.codeAttributes
         case .opaque:
-            Self.opaqueAttributes
+            var attributes = Self.opaqueAttributes
+            attributes[.bearobsOpaqueRegion] = true
+            return attributes
         case .taskMarker:
-            Self.taskMarkerAttributes
+            return Self.taskMarkerAttributes
         }
     }
 
@@ -698,7 +865,7 @@ private struct MarkdownEditorPresentation {
     private static var taskMarkerAttributes: [NSAttributedString.Key: Any] {
         [
             .foregroundColor: NSColor.controlAccentColor,
-            .link: URL(string: "bearobs-task://toggle")!,
+            .link: EditorTaskMarkerLink.toggleURL,
         ]
     }
 }

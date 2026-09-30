@@ -517,6 +517,44 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 - 未触碰 opaque 节点时，其完整 bytes 保持一致；
 - VoiceOver 能读出“未完成任务/已完成任务”和“局部源码区域”。
 
+#### P4 执行记录（2026-09-30）
+
+1. 自定义绘制（5.3/5.4）：新增 `EditorSurfaceLayoutManager`（`NSLayoutManager` 子类，
+   AppKit 侧），替换 task marker 的括号 glyph 绘制为 SF Symbols checkbox
+   （`checkmark.square.fill`/`square`，accent 色）。文本存储始终保留原始 `[ ]`/`[x]`
+   字节——绘制层用补集分段跳过 marker glyph，不使用零字号、透明字符或附件；编辑选择落在
+   marker 所在行时 raw 字节原样显示（3.2 允许的“焦点显示语法”），光标与选择仍按字符系统工作。
+   所有 marker/opaque 几何从 text storage 的临时呈现属性实时派生（`.link` toggle URL、
+   新增 `bearobsOpaqueRegion` 呈现键），属性随编辑自动平移，不存在会失步的缓存几何。
+2. 鼠标命中：`EditorTextView.mouseDown` 对普通单击先询问 coordinator，命中 checkbox 绘制
+   矩形（±3pt）即 toggle 并消费事件；`clickedOnLink` 保留为焦点态与属性回退路径。两条路径
+   汇入同一 `toggleTaskMarker`：先核对目标字节恰为 `[ ]`/`[x]`，再经 `shouldChangeText` +
+   `replaceCharacters` + `didChangeText` 走文本系统主编辑管线——可撤销，并经既有
+   `onDraftChange` 进入模型，无第二保存路径。
+3. accessibility action：光标所在任务行暴露一个 `NSAccessibilityCustomAction`
+   （未完成 → “标记为已完成”，已完成 → “标记为未完成”），handler 复用 `toggleTaskMarker`。
+   进入任务行时朗读“未完成任务/已完成任务”，切换后朗读新状态；光标进入 presentable
+   opaque 区域时朗读“局部源码区域”（离开再进入重复朗读）。朗读经注入式
+   `accessibilityAnnouncer`（默认 `NSAccessibility` announcement），测试注入记录器断言。
+   人工 VoiceOver 走查按计划留待 P6 出具 checklist。
+4. opaque 焦点呈现：选择头部落在 presentable opaque 区域（解析器的空行兜底不算源码区域）
+   时，绘制区域增强填充 + accent 边框 + “局部源码区域” caption（上方空间不足时不画
+   caption）；离开后仅停止绘制即恢复 P3 的弱化样式，不触碰存储属性。焦点状态翻转时仅
+   失效受影响的行/区域显示。
+5. 字节保护：opaque 之外输入、任务 toggle 均为纯文本插入/3 字节替换；测试证明在 opaque
+   区域前、后及文末插入后其子串字节不变，且 toggle 的 before/after 字节 diff 完全落在
+   marker 3 字节内。parser 将空行兜底为 opaque 并与相邻块合并的行为未改动，由呈现层过滤。
+6. 测试：新增 `EditorSurfaceInteractionTests` 12 例（计划 5.2 的测试文件清单之外独立成
+   文件），覆盖几何发布、toggle 三字节 diff 与 opaque 字节保真、非 marker range 拒绝、
+   checkbox 命中/未命中、link 点击与属性回退、AX action 名称与执行、朗读序列、
+   glyph 显隐随焦点、PDF 离屏绘制冒烟、单步 undo。夹具显式区分 UTF-8 字节与 UTF-16
+   坐标（经 `MarkdownTextCoordinateMap` 派生）。
+7. 门禁：SwiftPM 全量 311 测试通过；xcodebuild 测试计划 343 测试（含 2 条 UI 冒烟）通过；
+   `make check`（swift-format lint --strict、Golden/WebDAV 固定装置、密钥扫描）通过；
+   `make build` Debug/Release 通过。已知限制：任务 marker 无键盘切换路径（P6）；checkbox
+   命中仅覆盖绘制矩形 ±3pt；caption 在上邻行距不足 1 行高度时省略（边框与朗读仍标识源码
+   区域）。
+
 ### P5：阅读/编辑位置连续性
 
 实现 Reader block source entry、`ReaderViewportTracker` 和 editor restore：
