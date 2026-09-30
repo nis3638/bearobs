@@ -191,7 +191,7 @@ public final class EditorFeatureModel {
     public init(
         path: VaultPath,
         source: EditorDataSource,
-        projectionDebounce: Duration = .milliseconds(250),
+        projectionDebounce: Duration = .milliseconds(180),
         projectionBuild:
             @escaping @Sendable (
                 String,
@@ -424,7 +424,7 @@ public final class EditorProjectionEngine {
     private var pendingTask: Task<Void, Never>?
 
     public init(
-        debounce: Duration = .milliseconds(250),
+        debounce: Duration = .milliseconds(180),
         build:
             @escaping @Sendable (
                 String,

@@ -459,6 +459,49 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 - SwiftUI state 更新不会重置光标到开头；
 - 不产生第二个保存路径。
 
+#### P3 执行记录（2026-09-30）
+
+1. 视图契约重构：`SourcePreservingTextView` 从 `Binding<String>` 改为单向回调
+   （onDraftChange / onSelectionChange / onViewportChange / onMarkedTextChange / onSave /
+   onEscape）；`InlineMarkdownEditor` 把模型方法直接接到回调上，Command-S 与 Escape 路由回
+   ReaderView 的统一 `saveEditing()` / `finishEditing()`（脏草稿经既有放弃确认），没有
+   第二个保存路径。AppKit 侧 `NSRange`→UTF-8 转换全部收敛在 coordinator（4.3）。
+2. revision 门控同步（5.2）：`updateNSView` 不再按字符串比较回写；仅当模型 revision 变化
+   且显示文本确有差异时同步，并通过 `shouldChangeText` + `textStorage.replaceCharacters` +
+   `didChangeText` 完成——外部改写（保存归一化、重载）注册为可撤销编辑，不摧毁用户 undo
+   历史；同步前后保存并恢复 UTF-8 选择与首个可见行锚点。锚点经 `MarkdownSourcePatchBuilder`
+   最小补丁跨编辑平移（恰在插入边界上的锚点保持原位），prepend/append 类外部变更后用户
+   停留在同一内容附近。
+3. 输入法守卫（6.3）：`EditorTextView`（NSTextView 子类，显式 TextKit 1 栈）覆写
+   `setMarkedText` / `unmarkText` 上报组合状态；组合期间同步入口直接返回，绝不触碰文本
+   存储；组合期 Escape 交还输入法。测试证明组合窗口内收到外部 revision 不破坏组合文本，
+   `unmarkText` 后经同一回调完整提交（不丢字、不重复）。实现注记：当前 macOS 的
+   NSTextView/NSResponder 没有 `cancelOperation:` 默认实现（调用 super 会抛
+   unrecognized selector），Escape 在子类覆写内完成、组合期静默返回。
+4. 样式来源切换：视图不再在每次输入时于主线程同步构建投影，而是消费
+   `EditorProjectionEngine` 的后台结果（带 `projection.text == 显示文本` 陈旧守卫，陈旧
+   投影不清除既有样式）；仅首次绘制在引擎结果未就绪时用快照路径同步构建一次（复用基线
+   range）。投影应用同样保存/恢复选择与滚动锚点。投影 debounce 默认 250 ms → 180 ms
+   （回到 §6.3 的 120–200 ms 区间，否则输入到样式稳定会超出 §9.1 的 250 ms 预算）。
+5. 详情栏布局（3.1-2）：`InlineMarkdownEditor` 移除外层 SwiftUI `ScrollView`（此前与
+   NSScrollView 形成双层滚动）与独立卡片；编辑表面为无边界、无背景的单一滚动面，保存中/
+   失败状态为底部固定状态条，加载/错误态与 accessibility identifier 保持不变。文本列经
+   `textContainerInset` 与 Reader 内容列等宽居中：新增 `ReaderEditorLayoutToken`
+   （760/20/24），Reader 侧字面量同步替换，完成 P1 遗留的共用 presentation token。
+6. 测试：新增 `SourcePreservingTextViewTests` 11 例——边框/背景/identifier 契约；输入回传
+   draft + revision + UTF-8 选择；undo 撤销输入且 model 同步；echo 更新不重写存储/选择/
+   undo；外部归一化为可撤销编辑且 undo/redo 每一步 model 与视图一致（断言不依赖
+   NSUndoManager 分组粒度，SwiftPM 与 xcodebuild host 下分组边界不同）；组合文本不被外部
+   revision 破坏；Escape/Command-S 路由（组合期 Escape 让行、非匹配键不吞）；heading/code/
+   quote 样式落在 UTF-8 映射 range 上且陈旧投影不清除样式；astral + CJK 选择的 UTF-8
+   回传；跨块复制/粘贴更新草稿；外部变更保持首个可见行（prepend 后仍在原行，垂直偏移
+   一致）。测试以 NSWindow 承载表面——无窗口的 NSTextView 没有 undo manager。
+7. 门禁：SwiftPM 全量 299 测试通过；xcodebuild 测试计划 331 测试（含 2 条 UI 冒烟）通过；
+   `make check`（swift-format lint --strict、Golden/WebDAV 固定装置、密钥扫描）通过；
+   `make build` Debug/Release 通过。已知限制：引用块首版为缩进 + 次级颜色，暂无左侧视觉
+   引导线（P4/P6 收口）；阅读→编辑精确位置连续性按计划属 P5；任务标记点击沿用 M3 的
+   3 字节替换路径，其交互深化与 VoiceOver 属 P4。
+
 ### P4：任务项和局部源码交互
 
 实现：

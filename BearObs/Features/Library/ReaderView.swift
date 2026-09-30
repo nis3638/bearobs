@@ -204,7 +204,8 @@ public struct ReaderView: View {
                 model: editorModel,
                 initialScrollOffset: readerScrollOffset,
                 finishEditing: finishEditing,
-                retryReaderLoad: { Task { await model.load() } }
+                retryReaderLoad: { Task { await model.load() } },
+                save: { Task { await saveEditing() } }
             )
         } else {
             switch model.state {
@@ -216,9 +217,12 @@ public struct ReaderView: View {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ReaderBlocksView(blocks: document.blocks)
                     }
-                    .frame(maxWidth: 760, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 24)
+                    .frame(
+                        maxWidth: ReaderEditorLayoutToken.contentMaxWidth,
+                        alignment: .leading
+                    )
+                    .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
+                    .padding(.vertical, ReaderEditorLayoutToken.contentVerticalPadding)
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(
@@ -292,31 +296,35 @@ public struct ReaderView: View {
     }
 }
 
+/// The editor state of the detail column. The AppKit surface owns all
+/// scrolling; the loading, saving and failure states stay in SwiftUI around it
+/// without introducing a second editor or a second save path.
 struct InlineMarkdownEditor: View {
-    @Bindable var model: EditorFeatureModel
+    let model: EditorFeatureModel
     let initialScrollOffset: CGFloat
     let finishEditing: () -> Void
     let retryReaderLoad: () -> Void
+    let save: () -> Void
 
     init(
         model: EditorFeatureModel,
         initialScrollOffset: CGFloat = 0,
         finishEditing: @escaping () -> Void,
-        retryReaderLoad: @escaping () -> Void
+        retryReaderLoad: @escaping () -> Void,
+        save: @escaping () -> Void
     ) {
         self.model = model
         self.initialScrollOffset = initialScrollOffset
         self.finishEditing = finishEditing
         self.retryReaderLoad = retryReaderLoad
+        self.save = save
     }
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
             content
-                .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 24)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task {
             if model.state == .idle { await model.load() }
         }
@@ -327,35 +335,10 @@ struct InlineMarkdownEditor: View {
     private var content: some View {
         if model.isLoading {
             ProgressView("正在载入原始 Markdown")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("inline-editor-loading")
         } else if model.isReady {
-            VStack(alignment: .leading, spacing: 12) {
-                SourcePreservingTextView(
-                    text: Binding(
-                        get: { model.draft },
-                        set: { model.updateDraft($0) }
-                    ),
-                    sourceSnapshot: model.sourceSnapshot,
-                    initialScrollOffset: initialScrollOffset
-                )
-                .frame(minHeight: 360, alignment: .topLeading)
-                .accessibilityIdentifier("inline-editor-structured-surface")
-
-                if model.isSaving {
-                    Label("正在保存", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("正在保存笔记")
-                }
-
-                if let failure = model.failure {
-                    InlineEditorFailureView(
-                        failure: failure,
-                        isDirty: model.isDirty,
-                        dismiss: model.dismissFailure
-                    )
-                }
-            }
+            editorSurface
         } else {
             ContentUnavailableView {
                 Label("无法编辑笔记", systemImage: "doc.badge.exclamationmark")
@@ -370,6 +353,60 @@ struct InlineMarkdownEditor: View {
             }
             .accessibilityIdentifier("inline-editor-error")
         }
+    }
+
+    private var editorSurface: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SourcePreservingTextView(
+                text: model.draft,
+                revision: model.draftRevision,
+                projection: model.projectionEngine.projection,
+                sourceSnapshot: model.sourceSnapshot,
+                initialScrollOffset: initialScrollOffset,
+                onDraftChange: model.updateDraft,
+                onSelectionChange: { anchor, head in
+                    model.updateSelection(anchorUTF8: anchor, headUTF8: head)
+                },
+                onViewportChange: { anchor, offset in
+                    model.updateViewport(utf8Anchor: anchor, verticalOffset: offset)
+                },
+                onMarkedTextChange: model.setMarkedTextActive,
+                onSave: save,
+                onEscape: finishEditing
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("inline-editor-structured-surface")
+
+            if hasStatusContent {
+                statusStrip
+            }
+        }
+    }
+
+    private var hasStatusContent: Bool {
+        model.isSaving || model.failure != nil
+    }
+
+    private var statusStrip: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if model.isSaving {
+                Label("正在保存", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("正在保存笔记")
+            }
+
+            if let failure = model.failure {
+                InlineEditorFailureView(
+                    failure: failure,
+                    isDirty: model.isDirty,
+                    dismiss: model.dismissFailure
+                )
+            }
+        }
+        .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

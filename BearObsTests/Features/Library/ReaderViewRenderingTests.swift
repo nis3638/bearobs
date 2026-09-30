@@ -105,7 +105,8 @@ final class ReaderViewRenderingTests: XCTestCase {
             content: InlineMarkdownEditor(
                 model: editor,
                 finishEditing: {},
-                retryReaderLoad: {}
+                retryReaderLoad: {},
+                save: {}
             )
             .frame(width: 760, height: 520)
         )
@@ -128,7 +129,8 @@ final class ReaderViewRenderingTests: XCTestCase {
             content: InlineMarkdownEditor(
                 model: editor,
                 finishEditing: {},
-                retryReaderLoad: {}
+                retryReaderLoad: {},
+                save: {}
             )
             .frame(width: 760, height: 520)
         )
