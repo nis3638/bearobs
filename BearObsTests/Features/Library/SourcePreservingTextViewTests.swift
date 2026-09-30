@@ -278,7 +278,8 @@ final class SourcePreservingTextViewTests: XCTestCase {
             storage.attribute(.paragraphStyle, at: quoteRange.lowerBound, effectiveRange: nil)
                 as? NSParagraphStyle
         )
-        XCTAssertEqual(quoteStyle.headIndent, 12)
+        XCTAssertEqual(quoteStyle.firstLineHeadIndent, 16)
+        XCTAssertEqual(quoteStyle.headIndent, 16)
 
         // A projection for a different text must not strip the applied styles.
         let staleProjection = MarkdownEditorProjection(text: "别的草稿", runs: [])
@@ -653,6 +654,7 @@ final class SourcePreservingTextViewTests: XCTestCase {
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
             initialViewport: initialViewport,
+            saveStatus: .idle,
             onDraftChange: { text in
                 model.updateDraft(text)
                 self.draftChanges.append(text)
@@ -700,6 +702,7 @@ final class SourcePreservingTextViewTests: XCTestCase {
             projection: overrideProjection ?? model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
             initialViewport: nil,
+            saveStatus: .idle,
             onDraftChange: { text in
                 model.updateDraft(text)
                 self.draftChanges.append(text)

@@ -12,6 +12,9 @@ extension NSAttributedString.Key {
     /// hit-testing derive region geometry from attributes that shift with
     /// every edit, so there is no cached geometry to go stale.
     static let bearobsOpaqueRegion = NSAttributedString.Key("com.bearobs.editor.opaqueRegion")
+    /// Presentation-only tag on block-quote spans. Drawing uses it to place
+    /// the left guide line (REQ-002 5.3); the storage keeps the `>` bytes.
+    static let bearobsQuoteRegion = NSAttributedString.Key("com.bearobs.editor.quoteRegion")
 }
 
 /// Focus-sensitive interaction state derived from the selection (REQ-002 P4).
@@ -74,6 +77,11 @@ final class EditorSurfaceLayoutManager: NSLayoutManager {
     /// Opaque region ranges tagged by the projection presentation.
     func opaqueRanges(in range: NSRange) -> [NSRange] {
         rangesOfAttribute(.bearobsOpaqueRegion, in: range) { ($0 as? Bool) == true }
+    }
+
+    /// Block-quote ranges tagged by the projection presentation.
+    func quoteRanges(in range: NSRange) -> [NSRange] {
+        rangesOfAttribute(.bearobsQuoteRegion, in: range) { ($0 as? Bool) == true }
     }
 
     /// Opaque regions that carry visible content. The parser's blank-line
@@ -313,7 +321,29 @@ final class EditorSurfaceLayoutManager: NSLayoutManager {
                 at: origin
             )
         }
+
+        // Quote guide line (REQ-002 5.3): the same left bar the reader draws,
+        // in the gutter reserved by the quote paragraph style. Shape plus
+        // indentation carries the quote identity; color is not the only cue.
+        NSColor.tertiaryLabelColor.setFill()
+        for quote in quoteRanges(in: visibleCharacters) {
+            for rect in lineFragmentRects(forCharacterRange: quote, in: container) {
+                let bar = NSRect(
+                    x: rect.minX,
+                    y: rect.minY,
+                    width: Self.quoteGuideWidth,
+                    height: rect.height
+                )
+                NSBezierPath(
+                    roundedRect: bar.offsetBy(dx: origin.x, dy: origin.y),
+                    xRadius: 1.5,
+                    yRadius: 1.5
+                ).fill()
+            }
+        }
     }
+
+    private static let quoteGuideWidth: CGFloat = 3
 
     private func drawCaption(
         above firstLine: NSRect, previousLineMaxY: CGFloat?, at origin: NSPoint

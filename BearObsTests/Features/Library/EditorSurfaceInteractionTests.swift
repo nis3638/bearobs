@@ -370,7 +370,217 @@ final class EditorSurfaceInteractionTests: XCTestCase {
         XCTAssertFalse(surface.model.isDirty)
     }
 
+    // MARK: - Keyboard and announcement paths (REQ-002 P6)
+
+    /// All structured node kinds in one document (LF-only): heading,
+    /// paragraph, list item, quote, code block, opaque, task item.
+    static let kindFixture = """
+        # 一级标题
+
+        正文段落
+
+        - 列表项内容
+
+        > 引用行
+
+        ```
+        代码块行
+        ```
+
+        %% 局部源码 %%
+
+        - [ ] 任务一项
+        """
+
+    private static let kindMap = MarkdownTextCoordinateMap(text: kindFixture)
+
+    /// The UTF-16 location of the first occurrence of `needle`, found in UTF-8
+    /// bytes and mapped through the coordinate map.
+    private static func kindLocation(_ needle: String) -> Int {
+        let bytes = Array(kindFixture.utf8)
+        let needleBytes = Array(needle.utf8)
+        var start = 0
+        while start + needleBytes.count <= bytes.count {
+            let end = start + needleBytes.count
+            if Array(bytes[start..<end]) == needleBytes {
+                guard let range = kindMap.utf16Range(forUTF8: start..<end) else {
+                    fatalError("kindFixture offset for \(needle) must map to UTF-16")
+                }
+                return range.lowerBound
+            }
+            start += 1
+        }
+        preconditionFailure("kindFixture is missing \(needle)")
+    }
+
+    func testCommandLKeyboardEquivalentTogglesTaskUnderCaret() async throws {
+        let surface = try await makeSurface()
+        let textView = try XCTUnwrap(surface.textView)
+        let commandL = try makeKeyEvent("l", modifierFlags: .command)
+
+        textView.setSelectedRange(
+            NSRange(location: Self.uncheckedMarker.location + 1, length: 0))
+        XCTAssertTrue(textView.performKeyEquivalent(with: commandL))
+        XCTAssertEqual(
+            surface.model.draft,
+            Self.fixture.replacingOccurrences(of: "- [ ] 待办任务", with: "- [x] 待办任务")
+        )
+
+        // Off a task line the key press falls through unhandled.
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertFalse(textView.performKeyEquivalent(with: commandL))
+        XCTAssertEqual(
+            surface.model.draft,
+            Self.fixture.replacingOccurrences(of: "- [ ] 待办任务", with: "- [x] 待办任务")
+        )
+
+        textView.setSelectedRange(
+            NSRange(location: Self.checkedMarker.location + 1, length: 0))
+        XCTAssertTrue(textView.performKeyEquivalent(with: commandL))
+        XCTAssertEqual(
+            surface.model.draft,
+            Self.fixture
+                .replacingOccurrences(of: "- [ ] 待办任务", with: "- [x] 待办任务")
+                .replacingOccurrences(of: "- [x] 已完成任务", with: "- [ ] 已完成任务")
+        )
+    }
+
+    func testNodeTypeAnnouncementsFollowTheCaretWithoutRepeating() async throws {
+        let surface = try await makeSurface(text: Self.kindFixture)
+        let textView = try XCTUnwrap(surface.textView)
+        var announcements: [String] = []
+        surface.coordinator.accessibilityAnnouncer = { announcements.append($0) }
+
+        func move(to needle: String) {
+            textView.setSelectedRange(
+                NSRange(location: Self.kindLocation(needle), length: 0))
+        }
+
+        move(to: "正文段落")
+        move(to: "文段落")  // same paragraph: no repeat
+        move(to: "一级标题")
+        move(to: "级标题")  // same heading: no repeat
+        move(to: "列表项内容")
+        move(to: "引用行")
+        move(to: "代码块行")
+        move(to: "局部源码")
+        move(to: "任务一项")
+        move(to: "正文段落")
+
+        XCTAssertEqual(
+            announcements,
+            [
+                "段落",
+                "一级标题",
+                "列表项",
+                "引用",
+                "代码块",
+                "局部源码区域",
+                "未完成任务",
+                "段落",
+            ]
+        )
+    }
+
+    func testSaveStatusTransitionsAreAnnounced() async throws {
+        let surface = try await makeSurface()
+        let scrollView = surface.scrollView
+        var announcements: [String] = []
+        surface.coordinator.accessibilityAnnouncer = { announcements.append($0) }
+        let failureText =
+            "\(EditorFailure.saveFailed.title)。\(EditorFailure.saveFailed.message(isDirty: true))"
+
+        func sync(saveStatus: EditorSaveStatus) {
+            syncFromModel(
+                coordinator: surface.coordinator,
+                scrollView: scrollView,
+                model: surface.model,
+                saveStatus: saveStatus
+            )
+        }
+
+        sync(saveStatus: EditorSaveStatus(isSaving: true, failureText: nil))
+        sync(saveStatus: EditorSaveStatus(isSaving: false, failureText: nil))
+        sync(saveStatus: EditorSaveStatus(isSaving: false, failureText: failureText))
+        sync(saveStatus: EditorSaveStatus(isSaving: false, failureText: failureText))
+        sync(saveStatus: .idle)
+
+        XCTAssertEqual(announcements, ["正在保存笔记", "已保存", failureText])
+    }
+
+    func testEnteringTheSurfaceAnnouncesEditingMode() async throws {
+        let surface = try await makeSurface(captureAnnouncements: true)
+
+        XCTAssertEqual(surface.announcementLog?.messages, ["已进入编辑模式"])
+    }
+
+    func testEnteringTheSurfacePromotesInitialFocus() async throws {
+        let surface = try await makeSurface()
+
+        XCTAssertTrue(
+            surface.window.firstResponder === surface.textView,
+            "Entering edit mode must leave the user ready to type"
+        )
+    }
+
+    func testQuoteRunsCarryTheGuideLinePresentation() async throws {
+        let surface = try await makeSurface(text: Self.kindFixture)
+        let textView = try XCTUnwrap(surface.textView)
+        let layoutManager = try XCTUnwrap(
+            textView.layoutManager as? EditorSurfaceLayoutManager)
+        let storage = try XCTUnwrap(textView.textStorage)
+        let scrollView = surface.scrollView
+
+        let quoteLocation = Self.kindLocation("引用行")
+        let quoteRange = try XCTUnwrap(
+            layoutManager.quoteRanges(
+                in: NSRange(location: 0, length: storage.length)
+            ).first
+        )
+        // The run spans the whole quote node including the `>` bytes, so the
+        // guide line covers the line the caret is on.
+        XCTAssertEqual(quoteRange.location, Self.kindLocation("> 引用行"))
+        XCTAssertTrue(NSLocationInRange(quoteLocation, quoteRange))
+        XCTAssertTrue(
+            try XCTUnwrap(
+                storage.attribute(.bearobsQuoteRegion, at: quoteLocation, effectiveRange: nil)
+                    as? Bool
+            )
+        )
+        XCTAssertNil(
+            storage.attribute(.bearobsQuoteRegion, at: 0, effectiveRange: nil))
+
+        textView.setSelectedRange(NSRange(location: quoteLocation, length: 0))
+        let pdf = scrollView.dataWithPDF(inside: scrollView.bounds)
+        XCTAssertFalse(pdf.isEmpty)
+    }
+
+    private func makeKeyEvent(
+        _ characters: String,
+        modifierFlags: NSEvent.ModifierFlags
+    ) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: modifierFlags,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: characters,
+                charactersIgnoringModifiers: characters,
+                isARepeat: false,
+                keyCode: 0
+            )
+        )
+    }
+
     // MARK: - Helpers
+
+    @MainActor
+    private final class AnnouncementLog {
+        var messages: [String] = []
+    }
 
     @MainActor
     private struct Surface {
@@ -378,15 +588,17 @@ final class EditorSurfaceInteractionTests: XCTestCase {
         let coordinator: SourcePreservingTextView.Coordinator
         let scrollView: NSScrollView
         let window: NSWindow
+        let announcementLog: AnnouncementLog?
 
         var textView: SourcePreservingTextView.EditorTextView? {
             scrollView.documentView as? SourcePreservingTextView.EditorTextView
         }
     }
 
-    private func makeSurface(text: String = EditorSurfaceInteractionTests.fixture) async throws
-        -> Surface
-    {
+    private func makeSurface(
+        text: String = EditorSurfaceInteractionTests.fixture,
+        captureAnnouncements: Bool = false
+    ) async throws -> Surface {
         let document = EditorDocument(
             text: text,
             contentHash: try ContentHash(hex: String(repeating: "a", count: 64)),
@@ -414,6 +626,7 @@ final class EditorSurfaceInteractionTests: XCTestCase {
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
             initialViewport: nil,
+            saveStatus: .idle,
             onDraftChange: { model.updateDraft($0) },
             onSelectionChange: { anchor, head in
                 model.updateSelection(anchorUTF8: anchor, headUTF8: head)
@@ -427,6 +640,10 @@ final class EditorSurfaceInteractionTests: XCTestCase {
         )
         let coordinator = view.makeCoordinator()
         let scrollView = coordinator.makeScrollView()
+        let announcementLog = AnnouncementLog()
+        if captureAnnouncements {
+            coordinator.accessibilityAnnouncer = { announcementLog.messages.append($0) }
+        }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
             styleMask: [.titled],
@@ -443,14 +660,16 @@ final class EditorSurfaceInteractionTests: XCTestCase {
             model: model,
             coordinator: coordinator,
             scrollView: scrollView,
-            window: window
+            window: window,
+            announcementLog: captureAnnouncements ? announcementLog : nil
         )
     }
 
     private func syncFromModel(
         coordinator: SourcePreservingTextView.Coordinator,
         scrollView: NSScrollView,
-        model: EditorFeatureModel
+        model: EditorFeatureModel,
+        saveStatus: EditorSaveStatus = .idle
     ) {
         coordinator.parent = SourcePreservingTextView(
             text: model.draft,
@@ -458,6 +677,7 @@ final class EditorSurfaceInteractionTests: XCTestCase {
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
             initialViewport: nil,
+            saveStatus: saveStatus,
             onDraftChange: { model.updateDraft($0) },
             onSelectionChange: { anchor, head in
                 model.updateSelection(anchorUTF8: anchor, headUTF8: head)

@@ -190,6 +190,49 @@ final class EditorFeatureModelTests: XCTestCase {
         XCTAssertEqual(model.draftSnapshot, snapshotBeforeSave)
     }
 
+    /// REQ-002 P6: retrying after a save failure goes through the same save
+    /// path and writes the intact draft — the failure never eats the text.
+    func testRetryAfterSaveFailureResavesTheIntactDraft() async throws {
+        let savedHash = try Self.makeHash("b")
+        let saver = FailingOnceSaver()
+        let recorder = SaveRequestRecorder()
+        let model = try makeModel(
+            document: EditorDocument(
+                text: "baseline",
+                contentHash: try Self.makeHash("a"),
+                sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
+            ),
+            save: { request in
+                recorder.record(request.text)
+                if saver.shouldFail() {
+                    throw EditorDataSourceError.unavailable
+                }
+                return EditorDocument(
+                    text: request.text,
+                    contentHash: savedHash,
+                    sourceInfo: request.sourceInfo
+                )
+            }
+        )
+        await model.load()
+
+        model.updateDraft("重试后仍完整")
+        model.updateSelection(anchorUTF8: 2, headUTF8: 4)
+
+        await model.save()
+
+        XCTAssertEqual(model.failure, .saveFailed)
+        XCTAssertEqual(model.draft, "重试后仍完整")
+        XCTAssertEqual(model.selection, EditorSelection(anchorUTF8: 2, headUTF8: 4))
+
+        await model.save()
+
+        XCTAssertNil(model.failure)
+        XCTAssertFalse(model.isDirty)
+        XCTAssertEqual(model.draft, "重试后仍完整")
+        XCTAssertEqual(recorder.texts, ["重试后仍完整", "重试后仍完整"])
+    }
+
     func testSaveCompletionDuringMarkedTextDoesNotForceRewriteDraft() async throws {
         let gate = ParseGate()
         let savedHash = try Self.makeHash("b")
@@ -595,6 +638,33 @@ private actor BuildRecorder {
 
 private final class ObservationFlag: @unchecked Sendable {
     var didObserveDraftWrite = false
+}
+
+/// Save stub that fails exactly once, then succeeds — models the retry path.
+private final class FailingOnceSaver: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasFailed = false
+
+    func shouldFail() -> Bool {
+        lock.withLock {
+            if hasFailed { return false }
+            hasFailed = true
+            return true
+        }
+    }
+}
+
+private final class SaveRequestRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var savedTexts: [String] = []
+
+    var texts: [String] {
+        lock.withLock { savedTexts }
+    }
+
+    func record(_ text: String) {
+        lock.withLock { savedTexts.append(text) }
+    }
 }
 
 /// Gate for the first parse results so a test can prove that a superseded

@@ -628,6 +628,61 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 退出条件：AC-REQ-002-04 和 AC-REQ-002-06 对应自动化测试全绿，人工 VoiceOver checklist 留有
 日期、系统版本和结果。
 
+#### P6 执行记录（2026-10-01）
+
+1. 键盘入口（AC-06）：编辑动作的键盘入口为菜单命令"编辑笔记"（Command-E，
+   `BearObsApp.ReaderEditCommands`）。`ReaderView` 经 `focusedSceneValue(\.readerEditCommand, …)`
+   在阅读面显示期间发布当前笔记的编辑闭包，进入编辑态或无编辑数据源时命令自动禁用；
+   工具栏编辑按钮保留并标注快捷键提示。与计划的差异：实测（macOS 27）工具栏按钮
+   `.keyboardShortcut` 不响应合成键盘事件，且菜单命令是 macOS 键盘入口的标准位置，
+   ⌘E 因此由菜单命令持有。进入编辑表面时 `promoteInitialFocusIfNeeded` 把焦点一次性
+   落到文本视图（updateNSView 与初始恢复双入口、幂等），键盘用户进入编辑即可输入。
+2. Command-S 与 Escape：沿用 P3 的既有路径（AppKit 表面 `performKeyEquivalent` /
+   `cancelOperation` → 统一 `saveEditing()` / dirty guard），本轮新增 UI 测试按真实路径
+   验证：Command-S 落盘且保存按钮转禁用；Escape 对脏草稿弹出确认，"继续编辑"保草稿、
+   "放弃修改"不写盘并返回阅读。
+3. 任务 marker 键盘切换（P4 遗留收口）：`EditorTextView.performKeyEquivalent` 新增
+   Command-L → `toggleTaskMarkerUnderCaret`，光标所在任务行经 P4 既有
+   `toggleTaskMarker` 三字节替换（可撤销、同一 draft 回调、无第二保存路径）；非任务行
+   按键穿透。文本视图 accessibilityHelp 补充 Command-S / Escape / Command-L 说明。
+4. VoiceOver（AC-06）：
+   - 进入编辑朗读"已进入编辑模式"（初始恢复块内、每会话一次）；
+   - 光标移动朗读节点类型：一～六级标题（中文数字）、"段落""列表项""引用""代码块"，
+     以 `lastAnnouncedNodeKind` 去重；任务行与 presentable 源码区域沿用 P4 的状态朗读
+     （"未完成任务/已完成任务"/"局部源码区域"）并重置去重；解析器空行兜底不朗读；
+   - 保存状态：`SourcePreservingTextView` 新增 `saveStatus`（isSaving + failureText），
+     coordinator 在 `syncIfExternalChange` 边沿检测并朗读"正在保存笔记"/"已保存"/失败
+     标题+文案；首次观察与失败条"知道了"关闭静默。`EditorFailure.title` /
+     `message(isDirty:)` 提取为共享扩展，失败视图与朗读共用同一文案，无第二份错误文案；
+   - 失败视图重构：标题与文案独立可读，按钮不再被 `.combine` 吞并为单一元素
+     （VoiceOver 可达），"重试保存"仅对 `.saveFailed` 展示并复用同一 `save` 闭包。
+5. 失败路径（AC-04）：模型级 `testRetryAfterSaveFailureResavesTheIntactDraft` 证明
+   失败 → 重试走同一保存路径并完整写入草稿；UI 级测试把 Vault 目录临时置为只读制造
+   真实保存失败，断言失败条在详情栏内出现、编辑器不关闭、键盘焦点不丢（可继续输入）、
+   恢复权限后点"重试保存"成功且草稿完整落盘。
+6. 视觉与"不只依赖颜色"（P3/P4 遗留收口）：引用块新增左侧视觉引导线——呈现键
+   `bearobsQuoteRegion` + 布局管理器按行绘制 3pt 圆角条（`tertiaryLabelColor`），引用
+   段落样式缩进 12→16 为引导线留槽（对应用例同步更新）；深浅色全部使用语义色；焦点
+   块有插入光标 + accent 边框 + caption，错误有图标 + 标题 + 文案。
+7. 测试基础设施：`AppDirectories` 新增 `BEAROBS_AUTOPEN_VAULT` 启动环境，UI 测试自建
+   临时 Vault 并在启动时直接打开（与 `BEAROBS_APP_SUPPORT_ROOT` 同一隔离机制），不读取
+   也不写入开发者本机 Vault；失败路径测试无论断言走到哪一步都恢复目录权限后再清理。
+8. 测试：新增 `EditorSurfaceInteractionTests` 6 例（Command-L 三态与穿透、节点朗读
+   序列与去重、保存状态边沿朗读、进入编辑朗读、进入编辑自动聚焦、引用引导线呈现 +
+   PDF 冒烟）；`EditorFeatureModelTests` 新增 1 例（重试不丢草稿）；`BearObsUITests`
+   新增 5 例（键盘入口 + Command-S 落盘、Escape dirty guard 两分支、Command-L 任务
+   切换、保存失败 + 重试、深色 + 最大辅助字号）。UI 测试内注释记录了快捷键投递的实测
+   结论（typeKey 可达编辑表面第一响应者路径、到不了菜单键等价阶段，故 ⌘E 以菜单命令
+   的存在/启用/触发验证，绑定本身留待人工走查）。
+9. 门禁：SwiftPM 全量 345 测试通过；xcodebuild 测试计划 382 测试（含 7 条 UI）通过；
+   `make check`（swift-format lint --strict、Golden Vault 13 例、WebDAV 契约）通过；
+   `make build` Debug/Release 通过。
+10. 移交与已知限制：人工 VoiceOver 走查清单已出具
+    （`REQ-002-voiceover-checklist.md`，含日期、系统版本与自动化证据索引），待人工
+    执行后填写结果；macOS 27 下容器 `accessibilityIdentifier` 会传播覆盖失败条子元素
+    标识，UI 测试改按用户可见的 label/value 查询（不影响 VoiceOver 朗读）；checkbox
+    命中范围 ±3pt（P4 记录维持）。
+
 ### P7：收口与文档同步
 
 1. 运行 `make check`、`make test`、`make coverage`、Debug/Release build；

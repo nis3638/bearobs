@@ -199,6 +199,21 @@ final class AppWorkspaceModel {
             environment = .unavailable
             vaultURL = nil
         }
+        if let autoOpenVault {
+            openVault(autoOpenVault)
+        }
+    }
+
+    /// UI 测试通过该环境变量在启动时直接打开测试自建的临时 Vault，
+    /// 不驱动打开面板，也不读取开发者机器上一次选择的 Vault（REQ-002 P6）。
+    private var autoOpenVault: URL? {
+        guard
+            let raw = ProcessInfo.processInfo.environment[
+                AppDirectories.autoOpenVaultEnvironmentKey
+            ],
+            !raw.isEmpty
+        else { return nil }
+        return URL(fileURLWithPath: raw, isDirectory: true)
     }
 
     func openVault(_ root: URL) {
@@ -271,6 +286,8 @@ struct AppDirectories {
     /// UI 测试通过该环境变量把全部本地状态重定向到临时目录，
     /// 不读取也不写入开发者机器上真实选择的 Vault。
     static let appSupportOverrideEnvironmentKey = "BEAROBS_APP_SUPPORT_ROOT"
+    /// UI 测试通过该环境变量指定启动时直接打开的 Vault 目录。
+    static let autoOpenVaultEnvironmentKey = "BEAROBS_AUTOPEN_VAULT"
 
     static func makeLive(
         environment: [String: String] = ProcessInfo.processInfo.environment

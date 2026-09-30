@@ -16,6 +16,17 @@ enum ReaderEditorLayoutToken {
     static let editorTextColumnWidth = contentMaxWidth - contentHorizontalPadding * 2
 }
 
+/// Saving/failure presentation of the editor session, mirrored into the
+/// surface so state transitions can be announced to VoiceOver (REQ-002 P6).
+/// `failureText` is the full, user-facing announcement of the visible failure
+/// (title + message); nil when no failure is shown.
+struct EditorSaveStatus: Equatable {
+    var isSaving: Bool = false
+    var failureText: String?
+
+    static let idle = EditorSaveStatus()
+}
+
 /// The single native editing surface for the detail column (REQ-002 5.2). The
 /// text storage always holds the raw Markdown draft; every attribute applied
 /// here is temporary presentation derived from the projection and is never
@@ -40,6 +51,9 @@ struct SourcePreservingTextView: NSViewRepresentable {
     /// byte coordinates. Restore scrolls the recorded block back into view
     /// and places the insertion point inside the visible area (REQ-002 6.2).
     let initialViewport: ReaderViewportSnapshot?
+    /// Saving/failure state of the session; transitions are announced so
+    /// VoiceOver reads saving and failure states (REQ-002 P6).
+    let saveStatus: EditorSaveStatus
     let onDraftChange: (String) -> Void
     /// UTF-8 anchor/head of the selection at scalar boundaries.
     let onSelectionChange: (_ anchorUTF8: Int, _ headUTF8: Int) -> Void
@@ -60,16 +74,20 @@ struct SourcePreservingTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.syncIfExternalChange(in: scrollView)
+        context.coordinator.promoteInitialFocusIfNeeded(in: scrollView)
     }
 
     /// NSTextView subclass owning the hooks SwiftUI cannot reach: the Command-S
-    /// key equivalent, the Escape path, input-method marked-text
-    /// notifications, and the checkbox press target (REQ-002 P4). TextKit 1 is
-    /// constructed explicitly so the character and glyph mapping used for
-    /// UTF-8 restoration stays deterministic.
+    /// key equivalent, the Escape path, the Command-L task toggle, input-method
+    /// marked-text notifications, and the checkbox press target (REQ-002 P4/P6).
+    /// TextKit 1 is constructed explicitly so the character and glyph mapping
+    /// used for UTF-8 restoration stays deterministic.
     final class EditorTextView: NSTextView {
         var onCommandSave: (() -> Void)?
         var onCommandEscape: (() -> Void)?
+        /// Toggles the task marker on the caret's line; returns whether a
+        /// marker was toggled so an unhandled press falls through.
+        var onKeyboardToggleTask: (() -> Bool)?
         var onMarkedTextChange: ((Bool) -> Void)?
         /// Called for a plain single click with the point in view coordinates.
         /// Returns true when the press was consumed (checkbox toggle) so the
@@ -78,11 +96,17 @@ struct SourcePreservingTextView: NSViewRepresentable {
 
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             if event.type == .keyDown,
-                event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                event.charactersIgnoringModifiers == "s"
+                event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
             {
-                onCommandSave?()
-                return true
+                switch event.charactersIgnoringModifiers {
+                case "s":
+                    onCommandSave?()
+                    return true
+                case "l":
+                    return onKeyboardToggleTask?() ?? false
+                default:
+                    break
+                }
             }
             return super.performKeyEquivalent(with: event)
         }
@@ -153,6 +177,15 @@ struct SourcePreservingTextView: NSViewRepresentable {
         private weak var observedScrollView: NSScrollView?
         private var hasRestoredInitialContext = false
         private var coordinateMapCache: (text: String, map: MarkdownTextCoordinateMap)?
+        /// Last save status seen through `syncIfExternalChange`; transitions
+        /// become VoiceOver announcements (REQ-002 P6).
+        private var lastObservedSaveStatus = EditorSaveStatus.idle
+        /// Last node kind announced for the caret, so moving within a node
+        /// does not repeat the announcement (REQ-002 P6).
+        private var lastAnnouncedNodeKind: String?
+        /// Guard so the one-time initial focus promotion does not steal focus
+        /// back from the user later in the session.
+        private var hasPromotedInitialFocus = false
         /// VoiceOver announcements for task and opaque-region interaction.
         /// The default posts an accessibility announcement; tests inject a
         /// recorder.
@@ -224,10 +257,16 @@ struct SourcePreservingTextView: NSViewRepresentable {
                 height: ReaderEditorLayoutToken.contentVerticalPadding
             )
             textView.setAccessibilityLabel("可编辑笔记内容")
-            textView.setAccessibilityHelp("内容在当前详情栏内编辑；按 Command-S 保存，按 Escape 结束编辑")
+            textView.setAccessibilityHelp(
+                "内容在当前详情栏内编辑；按 Command-S 保存，按 Escape 结束编辑，"
+                    + "光标在任务行时按 Command-L 切换完成状态")
             textView.setAccessibilityIdentifier("inline-editor-text")
             textView.onCommandSave = { [weak self] in self?.parent.onSave() }
             textView.onCommandEscape = { [weak self] in self?.parent.onEscape() }
+            textView.onKeyboardToggleTask = { [weak self, weak textView] in
+                guard let self, let textView else { return false }
+                return self.toggleTaskMarkerUnderCaret(in: textView)
+            }
             textView.onMarkedTextChange = { [weak self] active in
                 self?.parent.onMarkedTextChange(active)
             }
@@ -244,6 +283,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
                 )
             }
             textView.typingAttributes = MarkdownEditorPresentation().baseAttributes
+            lastObservedSaveStatus = parent.saveStatus
 
             scrollView.documentView = textView
             observedScrollView = scrollView
@@ -274,6 +314,7 @@ struct SourcePreservingTextView: NSViewRepresentable {
             }
             applyProjectionIfChanged(to: textView, in: scrollView)
             refreshInteraction(in: textView, announcing: false)
+            announceSaveStatusTransition()
         }
 
         // MARK: - NSTextViewDelegate
@@ -383,6 +424,37 @@ struct SourcePreservingTextView: NSViewRepresentable {
             return true
         }
 
+        /// Keyboard toggle path (REQ-002 P6): toggles the task marker on the
+        /// caret's line. Returns false when the caret is not on a task line so
+        /// the key press falls through to the responder chain.
+        func toggleTaskMarkerUnderCaret(in textView: EditorTextView) -> Bool {
+            guard
+                let layoutManager = textView.layoutManager as? EditorSurfaceLayoutManager,
+                let storage = textView.textStorage,
+                storage.length > 0
+            else { return false }
+            let caret = min(max(0, textView.selectedRange().location), storage.length - 1)
+            guard let marker = layoutManager.taskMarkerOnLine(containingUTF16Location: caret)
+            else { return false }
+            return toggleTaskMarker(range: marker, in: textView)
+        }
+
+        /// Announces saving/failure transitions (REQ-002 P6): entering saving,
+        /// a visible failure, or a completed save. Dismissing a failure and
+        /// the first observation of the current state stay silent.
+        private func announceSaveStatusTransition() {
+            let current = parent.saveStatus
+            defer { lastObservedSaveStatus = current }
+            guard current != lastObservedSaveStatus else { return }
+            if current.isSaving {
+                announce("正在保存笔记")
+            } else if let failureText = current.failureText {
+                announce(failureText)
+            } else if lastObservedSaveStatus.isSaving {
+                announce("已保存")
+            }
+        }
+
         /// Recomputes the focus-sensitive presentation after a selection or
         /// draft change: invalidates the drawing of regions whose focus state
         /// flipped, refreshes the accessibility actions for the task under the
@@ -425,6 +497,84 @@ struct SourcePreservingTextView: NSViewRepresentable {
             {
                 announce("局部源码区域")
             }
+            announceNodeKindIfNeeded(
+                focus: newFocus, caretUTF16: newSelection.location, in: textView)
+        }
+
+        /// Announces the node kind under the caret (REQ-002 P6: VoiceOver
+        /// reads node types). Task lines and presentable source regions speak
+        /// their own state, so they only reset the dedupe; a kind repeats
+        /// nothing while the caret stays inside it.
+        private func announceNodeKindIfNeeded(
+            focus: EditorSurfaceInteractionFocus,
+            caretUTF16: Int,
+            in textView: EditorTextView
+        ) {
+            func resetAndSkip() {
+                lastAnnouncedNodeKind = nil
+            }
+            if focus.hasFocusedOpaque || !focus.focusedMarkers.isEmpty {
+                resetAndSkip()
+                return
+            }
+            guard let kind = nodeKind(atUTF16Location: caretUTF16, in: textView) else {
+                // Between runs (blank fallback lines, document end): the next
+                // real node must be spoken again.
+                lastAnnouncedNodeKind = nil
+                return
+            }
+            guard kind != lastAnnouncedNodeKind else { return }
+            lastAnnouncedNodeKind = kind
+            announce(kind)
+        }
+
+        /// The announcement for the node holding `location`, or nil when the
+        /// caret is on a task line, inside a source region, or outside every
+        /// named run and the paragraph baseline does not apply.
+        private func nodeKind(
+            atUTF16Location location: Int,
+            in textView: EditorTextView
+        ) -> String? {
+            guard
+                let layoutManager = textView.layoutManager as? EditorSurfaceLayoutManager,
+                let storage = textView.textStorage,
+                storage.length > 0,
+                location >= 0,
+                location < storage.length
+            else { return nil }
+            guard
+                layoutManager.taskMarkerOnLine(containingUTF16Location: location) == nil
+            else { return nil }
+            guard
+                let projection = lastAppliedProjection
+                    ?? resolvedProjection(for: textView.string)
+            else { return nil }
+            let head = Self.utf8Offset(
+                forUTF16: location, in: coordinateMap(for: textView.string))
+            for run in projection.runs {
+                guard run.range.contains(head) else { continue }
+                switch run.token {
+                case .heading(let level):
+                    return Self.headingAnnouncement(level: level)
+                case .listItem:
+                    return "列表项"
+                case .quote:
+                    return "引用"
+                case .codeBlock:
+                    return "代码块"
+                case .opaque, .taskMarker:
+                    // Presentable regions speak through the focus path; the
+                    // parser's blank-line fallback is not a node at all.
+                    return nil
+                }
+            }
+            return "段落"
+        }
+
+        private static func headingAnnouncement(level: Int) -> String {
+            let numerals = ["一", "二", "三", "四", "五", "六"]
+            guard (1...6).contains(level) else { return "标题" }
+            return "\(numerals[level - 1])级标题"
         }
 
         /// One accessibility action for the task item under the caret; its
@@ -652,6 +802,23 @@ struct SourcePreservingTextView: NSViewRepresentable {
                 guard let textView = scrollView.documentView as? EditorTextView else { return }
                 self.restoreReaderViewport(in: scrollView, textView: textView)
                 self.reportViewport(in: scrollView)
+                self.promoteInitialFocusIfNeeded(in: scrollView)
+                self.announce("已进入编辑模式")
+            }
+        }
+
+        /// Keyboard entry (REQ-002 P6): entering edit mode through the
+        /// keyboard must land the user ready to type, without a click. Runs
+        /// once, the first time the surface actually sits in a window.
+        func promoteInitialFocusIfNeeded(in scrollView: NSScrollView) {
+            guard !hasPromotedInitialFocus else { return }
+            guard
+                let textView = scrollView.documentView as? EditorTextView,
+                let window = textView.window
+            else { return }
+            hasPromotedInitialFocus = true
+            if window.firstResponder !== textView {
+                window.makeFirstResponder(textView)
             }
         }
 
@@ -929,10 +1096,12 @@ private struct MarkdownEditorPresentation {
         case .listItem:
             return [.paragraphStyle: Self.listParagraphStyle]
         case .quote:
-            return [
+            var attributes: [NSAttributedString.Key: Any] = [
                 .foregroundColor: NSColor.secondaryLabelColor,
                 .paragraphStyle: Self.quoteParagraphStyle,
             ]
+            attributes[.bearobsQuoteRegion] = true
+            return attributes
         case .codeBlock:
             return Self.codeAttributes
         case .opaque:
@@ -976,7 +1145,10 @@ private struct MarkdownEditorPresentation {
 
     private static var quoteParagraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.headIndent = 12
+        // The 16pt gutter holds the 3pt guide line drawn by the layout
+        // manager, mirroring the reader's bar + spacing composition.
+        style.firstLineHeadIndent = 16
+        style.headIndent = 16
         style.lineSpacing = readerBodyLineSpacing
         return style
     }

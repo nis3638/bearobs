@@ -35,6 +35,21 @@ enum ReaderInternalRoute {
     }
 }
 
+/// Command-E entry for the edit action of the reader currently on screen
+/// (REQ-002 P6). The reader publishes the closure through
+/// `focusedSceneValue` while it shows the reading surface; the app's menu
+/// command owns the shortcut so it fires no matter what holds key focus.
+private struct ReaderEditCommandKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    public var readerEditCommand: (() -> Void)? {
+        get { self[ReaderEditCommandKey.self] }
+        set { self[ReaderEditCommandKey.self] = newValue }
+    }
+}
+
 public struct ReaderView: View {
     @State private var model: ReaderFeatureModel
     @State private var destination: VaultPath?
@@ -91,6 +106,7 @@ public struct ReaderView: View {
     public var body: some View {
         content
             .navigationTitle(title)
+            .focusedSceneValue(\.readerEditCommand, editCommand)
             .task(id: requestedPath) {
                 if model.path != requestedPath {
                     editorModel = nil
@@ -132,6 +148,7 @@ public struct ReaderView: View {
                         } label: {
                             Label("编辑", systemImage: "square.and.pencil")
                         }
+                        .accessibilityHint("在原位编辑这篇笔记，快捷键 Command-E")
                         .accessibilityIdentifier("reader-edit-button")
                     }
                 }
@@ -287,6 +304,14 @@ public struct ReaderView: View {
         return requestedPath.fileNameWithoutExtension
     }
 
+    /// Keyboard entry for the edit action (REQ-002 P6): published only while
+    /// the reading surface is up, so the menu command targets the reader the
+    /// user actually sees.
+    private var editCommand: (() -> Void)? {
+        guard editorModel == nil, let editorSource else { return nil }
+        return { beginEditing(with: editorSource) }
+    }
+
     private var favoriteFailurePresented: Binding<Bool> {
         Binding(
             get: { model.favoriteFailure != nil },
@@ -426,6 +451,12 @@ struct InlineMarkdownEditor: View {
                 projection: model.projectionEngine.projection,
                 sourceSnapshot: model.sourceSnapshot,
                 initialViewport: initialViewport,
+                saveStatus: EditorSaveStatus(
+                    isSaving: model.isSaving,
+                    failureText: model.failure.map { failure in
+                        "\(failure.title)。\(failure.message(isDirty: model.isDirty))"
+                    }
+                ),
                 onDraftChange: model.updateDraft,
                 onSelectionChange: { anchor, head in
                     model.updateSelection(anchorUTF8: anchor, headUTF8: head)
@@ -463,6 +494,7 @@ struct InlineMarkdownEditor: View {
                 InlineEditorFailureView(
                     failure: failure,
                     isDirty: model.isDirty,
+                    retry: failure == .saveFailed ? save : nil,
                     dismiss: model.dismissFailure
                 )
             }
@@ -473,28 +505,11 @@ struct InlineMarkdownEditor: View {
     }
 }
 
-private struct InlineEditorFailureView: View {
-    let failure: EditorFailure
-    let isDirty: Bool
-    let dismiss: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: "exclamationmark.triangle")
-                .font(.headline)
-            Text(message)
-                .font(.footnote)
-            Button("知道了", action: dismiss)
-                .font(.footnote)
-        }
-        .padding(.vertical, 10)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title)。\(message)")
-        .accessibilityIdentifier("inline-editor-failure")
-    }
-
-    private var title: String {
-        switch failure {
+extension EditorFailure {
+    /// User-facing titles shared by the failure strip and the VoiceOver
+    /// announcements so both surfaces read the same words (REQ-002 P6).
+    var title: String {
+        switch self {
         case .contentChanged: "笔记已在别处修改"
         case .commitUncertain: "保存状态需要确认"
         case .indexRefreshFailed: "笔记已保存"
@@ -503,8 +518,8 @@ private struct InlineEditorFailureView: View {
         }
     }
 
-    private var message: String {
-        switch failure {
+    func message(isDirty: Bool) -> String {
+        switch self {
         case .contentChanged:
             "为避免覆盖外部修改，当前草稿没有写入。请复制草稿并重新打开笔记后合并。"
         case .commitUncertain:
@@ -520,6 +535,36 @@ private struct InlineEditorFailureView: View {
         case .saveFailed:
             "原文件保持不变，请检查磁盘空间和文件权限后重试。"
         }
+    }
+}
+
+private struct InlineEditorFailureView: View {
+    let failure: EditorFailure
+    let isDirty: Bool
+    let retry: (() -> Void)?
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(failure.title, systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                // The headline doubles as the queryable failure element;
+                // message and buttons stay separate so VoiceOver users can
+                // reach the actions (REQ-002 P6).
+                .accessibilityIdentifier("inline-editor-failure")
+            Text(failure.message(isDirty: isDirty))
+                .font(.footnote)
+            HStack(spacing: 12) {
+                if failure == .saveFailed, let retry {
+                    Button("重试保存", action: retry)
+                        .font(.footnote)
+                        .accessibilityIdentifier("inline-editor-retry-button")
+                }
+                Button("知道了", action: dismiss)
+                    .font(.footnote)
+            }
+        }
+        .padding(.vertical, 10)
     }
 }
 
