@@ -60,8 +60,12 @@ final class BearObsUITests: XCTestCase {
             editCommand.waitForExistence(timeout: 5),
             "The 编辑笔记 keyboard entry must exist"
         )
-        // 菜单校验是惰性的，启用状态可能晚一拍，轮询等待。
-        waitUntil(timeout: 5) { editCommand.isEnabled }
+        // 菜单校验是惰性的，启用状态可能晚一拍，轮询等待；全量并行时
+        // focusedSceneValue 传播可能明显滞后，给足与其它等待一致的 10 s。
+        // 实测 isHittable 对菜单项不可靠（可点击但持续报告 false），不能作为
+        // 点击前门；菜单窗口布局期偶发的 INFINITY 命中点属 XCUITest 事件
+        // 合成层问题，测试侧无法先行探测。
+        waitUntil(timeout: 10) { editCommand.isEnabled }
         editCommand.click()
         XCTAssertTrue(
             editor.waitForExistence(timeout: 10),
