@@ -1,7 +1,7 @@
 ---
 title: REQ-002 Bear 式笔记原位编辑实现计划
 date: 2026-09-07
-status: planned
+status: completed
 requirement_id: REQ-002
 tags:
   - implementation-plan
@@ -690,6 +690,52 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 3. 更新 `03-development-design.md` 和 `04-development-plan.md`；
 4. 将 REQ-002 的五项收口待办逐项链接到测试或验收证据后再勾选；
 5. 只有 AC-REQ-002-01 至 06 全部有证据，才把 REQ-002 状态改成 `completed`。
+
+#### P7 执行记录（2026-10-01）
+
+1. 提交收口：P6 的键盘/VoiceOver/失败路径改动按 §11 第 8 项提交
+   （`test: cover REQ-002 macOS acceptance paths`，含人工 VoiceOver 走查清单）。
+2. 门禁（本机，2026-10-01）：`make check`（swift-format lint --strict、Golden Vault 13 例、
+   WebDAV 契约 9 场景、密钥扫描）通过；`make test` 通过（SwiftPM 345 测试、xcodebuild 测试
+   计划 382 测试，含 7 条 UI，0 失败）；`make coverage` 通过，BearObs.app 行覆盖
+   85.04%（10480/12324，P0 基线 83.53%）；`make build` Debug/Release 通过。
+3. 门禁期间发现两条 UI 偶发（同一提交下可复跑通过，非代码回归）：
+   - 最大辅助字号下点击"编辑笔记"菜单项偶发以 INFINITY 命中点抛
+     `NSInternalInconsistencyException`（堆栈在 XCUITest 事件合成层，菜单窗口布局期
+     AX 框架瞬时无效，App 进程未崩溃）；
+   - 全量并行时 `@FocusedValue` 向菜单命令的启用状态传播可能滞后超过 5 s。
+   处置：`enterEditingThroughKeyboardEntry` 的启用轮询上限提高到 10 s
+   （`test: harden menu entry polling in UI tests`）。实测 `isHittable` 对菜单项不可靠
+   （可点击但持续报告 false），不得用作点击前门；INFINITY 命中点属 XCUITest 事件合成层，
+   测试侧无法先行探测，作为已知偶发记录。
+4. 安全审查（§9.2 逐项，无发现）：
+   - 输入：编辑表面为纯文本（`isRichText=false`、`importsGraphics=false`、
+     `allowsImageEditing=false`、自动链接检测关闭），粘贴只以纯文本进入草稿，不存在
+     属性注入或附件面；输入全部经文本系统单一编辑管线进入模型草稿；
+   - 链接协议：Reader 侧仅无凭据 `http`/`https`（必须含 host）与有效 `mailto` 可成为链接；
+     内部路由仅承载已验证 `VaultPath`；编辑器内唯一的 `.link` 属性是任务 marker 的
+     `bearobs-task://toggle`，点击在进程内消化为 3 字节替换，Markdown 行内链接为普通
+     样式文本、不可点击，不产生新系统动作入口；
+   - HTML/插件内容：InlineHTML 按原文文本渲染，未知语法以 opaque 局部源码区域显示并逐字节
+     保留；应用内无 WebView、JavaScriptCore、`NSWorkspace.open` 或子进程执行面；
+   - 文件写入：写入仅经 `LocalVaultStore` 协调原子替换，expected-hash CAS、文件身份与
+     `AT_SYMLINK_NOFOLLOW` 检查、SHA-256 校验读、最小补丁写前完整性核对（`patched == candidate`）
+     保持不变；错误 UI 全部为静态文案，不泄露路径、异常或文件内容；测试只写临时 Vault
+     （`BEAROBS_APP_SUPPORT_ROOT`/`BEAROBS_AUTOPEN_VAULT`）并在结束清理。
+5. 文档同步：`03-development-design.md` 新增 13.9 原位编辑表面切片；`04-development-plan.md`
+   更新里程碑总览、当前执行位置与 M3 工作流 A 的 REQ-002 记录；REQ-002 需求第 8 节五项收口
+   待办逐项链接证据（第 1—4 项勾选，第 5 项待人工 VoiceOver 走查）。
+6. AC-REQ-002-01 证据补强：验收矩阵承诺的显式断言（无 sheet、无第二窗口、列表选择不变、
+   保存后同一详情栏回显已保存内容）此前仅由全部编辑 UI 测试在主窗口内驱动编辑表面间接覆盖。
+   本轮已撰写专项 UI 测试 `testEditingStaysInTheDetailColumnAndSavedContentReturnsToTheReader`
+   补齐该断言；撰写完成时本机 GUI 会话进入锁定状态（2026-10-01 01:47 起，新应用激活被系统
+   拒绝，UI 测试无法启动），该测试尚未通过一次门禁验证，因此保留在工作区、未随本次收口
+   提交；会话解锁后随首个 `make test` 绿线单独提交。
+7. 状态决定：AC-REQ-002-01 至 05 的自动化证据齐全（测试矩阵见 §8；AC-01 的显式断言测试
+   见第 6 条，落地前由间接证据覆盖）；AC-REQ-002-06 的 VoiceOver 人工走查尚未执行
+   （`REQ-002-voiceover-checklist.md`，自动化覆盖已完成并全绿）。依据第 5 步规则，REQ-002
+   状态保持 `confirmed`，人工走查完成并在清单记录结果后方可改为 `completed`；实现计划本身
+   全部阶段已执行完毕，状态改为 `completed`。
 
 ## 8. 测试与验收矩阵
 

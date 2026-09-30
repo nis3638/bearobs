@@ -167,11 +167,32 @@ tags:
 
 以下事项全部完成并通过对应验收前，REQ-002 不得标记为“完成”：
 
-- [ ] 为 Markdown 节点建立精确的 UTF-8 半开源码区间，支持阅读节点、编辑节点与原始字节的可靠映射；
-- [ ] 建立结构化编辑节点与未知 Obsidian 语法不透明节点，使两类节点可以在同一编辑树中共存；
-- [ ] 将结构化修改转换为针对基线源码区间的最小源码补丁，并复用现有原子保存路径；
-- [ ] 实现阅读态到编辑态的滚动位置、点击位置、选择和光标恢复，避免切换时跳回顶部或产生明显位移；
-- [ ] 补齐 macOS UI 验收，覆盖原位编辑、滚动与焦点连续性、保存失败、并发输入、切换笔记保护、键盘和 VoiceOver。
+- [x] 为 Markdown 节点建立精确的 UTF-8 半开源码区间，支持阅读节点、编辑节点与原始字节的可靠映射；
+  证据：`MarkdownSourceMapParser`、`MarkdownEditorProjectionBuilder`、`MarkdownTextCoordinateMap`
+  （实现计划 P1）；`MarkdownTextCoordinateMapTests` 全标量边界往返（BOM/中文/emoji/组合字符/CRLF）、
+  `MarkdownEditorProjectionBuilderTests` 逐字节核对 run 区间且不劈裂 UTF-8/UTF-16 标量、
+  `MarkdownReaderRendererTests` 逐字节核对阅读块 entry 区间。
+- [x] 建立结构化编辑节点与未知 Obsidian 语法不透明节点，使两类节点可以在同一编辑树中共存；
+  证据：实现计划 P1（heading/paragraph/list/quote/codeBlock + opaque 降级规则）、
+  P4（opaque 焦点呈现与字节保护）；`MarkdownEditorProjectionBuilderTests`（插件围栏等降级
+  opaque、节点不重叠）、`EditorSurfaceInteractionTests`（opaque 区域外输入不改变其字节、
+  焦点呈现与朗读）。
+- [x] 将结构化修改转换为针对基线源码区间的最小源码补丁，并复用现有原子保存路径；
+  证据：`MarkdownSourcePatchBuilder`/`MarkdownSourcePatchApplier` + `LocalReaderDataSource.save`
+  （expected-hash CAS、macOS 文件协调、同目录 staging 原子替换，实现计划 P2/P6）；
+  `MarkdownSourcePatchBuilderTests`（含 1 MiB 单 hunk）、`EditorFeatureModelTests`（保存期间输入、
+  失败保留草稿）、UI `testSaveFailureKeepsTheEditorAndRetryPreservesTheDraft`。
+- [x] 实现阅读态到编辑态的滚动位置、点击位置、选择和光标恢复，避免切换时跳回顶部或产生明显位移；
+  证据：实现计划 P5——`MarkdownRenderBlockEntry`、`ReaderViewportTracker`、编辑态视口恢复与
+  阅读面回跳；`ReaderViewportTrackerTests`、`SourcePreservingTextViewTests`（约 250 屏 fixture
+  在上/中/尾三处恢复，目标块与插入点可见，纯几何断言）、`EditorFeatureModelTests`（草稿→基线
+  反向平移）。阅读态暂无可靠文本选择，按实现计划 §6.2 聚焦当前可见区域（本需求 4.3-2 允许）。
+- [ ] 补齐 macOS UI 验收，覆盖原位编辑、滚动与焦点连续性、保存失败、并发输入、切换笔记保护、
+  键盘和 VoiceOver；
+  现状：自动化部分已闭合（xcodebuild 382 测试含 7 条 UI：键盘入口/Command-S/Escape dirty
+  guard/Command-L/保存失败重试/深色最大字号等，2026-10-01 全绿）；人工 VoiceOver 走查待执行
+  （[REQ-002-voiceover-checklist.md](REQ-002-voiceover-checklist.md)，含自动化证据索引）。
+  清单全部条目人工确认后本项方可勾选，届时 REQ-002 状态改 `completed`。
 
 ## 9. 追踪关系
 

@@ -761,6 +761,27 @@ sequenceDiagram
 - Library、Tags、Search 和 Wiki Link 递归跳转共享同一个 `ReaderDataSource`。附件 Embed 仍按安全
   文本显示，附件缓存与存在性解析是独立后续切片，不混入 C5。
 
+### 13.9 原位编辑表面切片（REQ-002）
+
+- 编辑表面是单一无边框 `NSTextView`（`SourcePreservingTextView`，显式 TextKit 1 栈），文本存储
+  始终持有原始 Markdown；标题、列表、引用、代码与局部源码区域的呈现全部是投影派生的临时属性，
+  没有第二份可保存文档，投影不提供保存接口；
+- `MarkdownEditorProjectionBuilder`（仅依赖 Foundation）在后台把草稿解析为带 UTF-8 半开区间的
+  节点与样式 run；无法证明边界的语法（Wiki Link、Embed、Callout、带 info string 的围栏、HTML
+  等）降级为 opaque 局部源码区域；全部 range 经 `MarkdownTextCoordinateMap` 做 UTF-8↔UTF-16
+  映射，`NSRange` 只停留在 AppKit 适配层；
+- 编辑会话以 `EditorFeatureModel` 实例为身份：draft revision、selection/viewport 快照、
+  debounce 重解析与 stale-result guard；输入法 marked text 期间绝不回写文本存储；旧会话的
+  解析或保存结果无法发布进新会话，切换笔记销毁会话并清除位置状态；
+- 阅读态以顶层块的原始字节区间冻结 `ReaderViewportSnapshot`；进入编辑态按 BOM 平移、UTF-16
+  映射和行几何恢复可见块，把插入点放到可见区域内首个非 opaque 位置；退出编辑经基线最小补丁
+  反向平移回到阅读面锚点，不跳回顶部；
+- 保存复用 9.5 的原子写路径：草稿对基线生成最小补丁、expected-hash CAS、协调原子替换；
+  Command-S、Escape、键盘进入编辑（Command-E 菜单命令）与任务 marker 切换（Command-L、
+  自绘 checkbox）都汇入同一条保存与 dirty guard 路径；
+- VoiceOver 朗读编辑态、节点类型、任务状态、局部源码区域与保存/失败状态，朗读文案与失败视图
+  共享同一份 `EditorFailure` 文案；焦点与错误状态同时用光标、形状和图标表达，不只依赖颜色。
+
 ## 14. 错误模型
 
 统一错误分类：
