@@ -413,7 +413,7 @@ final class EditorSurfaceInteractionTests: XCTestCase {
             revision: model.draftRevision,
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
-            initialScrollOffset: 0,
+            initialViewport: nil,
             onDraftChange: { model.updateDraft($0) },
             onSelectionChange: { anchor, head in
                 model.updateSelection(anchorUTF8: anchor, headUTF8: head)
@@ -457,7 +457,7 @@ final class EditorSurfaceInteractionTests: XCTestCase {
             revision: model.draftRevision,
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
-            initialScrollOffset: 0,
+            initialViewport: nil,
             onDraftChange: { model.updateDraft($0) },
             onSelectionChange: { anchor, head in
                 model.updateSelection(anchorUTF8: anchor, headUTF8: head)

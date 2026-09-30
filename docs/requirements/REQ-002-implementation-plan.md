@@ -567,6 +567,55 @@ Reader 使用 entry 而不是数组下标作为滚动锚点。渲染器必须从
 退出条件：对至少 200 屏高度的 fixture，在上部、中部、尾部三处切换，目标块仍可见且插入点在
 可见区域；不得使用固定像素或延时 sleep 猜测位置。
 
+#### P5 执行记录（2026-09-30）
+
+1. Reader block source entry（6.1）：`MarkdownRenderDocument` 的顶层块列表改为带出处的
+   `entries`（`blocks` 变为派生属性；测试/预览用的 blocks 构造器合成空区间 entry，永不作为
+   锚点）。`MarkdownRenderBlockEntry.id` 固定为 `sourceRange.lowerBound`，`sourceRange` 为原始
+   文件 UTF-8 字节区间（含 BOM 与 frontmatter 偏移，与 Wiki Link occurrence 坐标同一空间）：
+   swift-markdown `SourceRange` 经 `ReaderBodySource` 行列映射到正文字节再加 `bodyRange.lowerBound`。
+   映射失败的节点继承最近可映射父块区间；完全无出处的块携带空区间，不猜测写入范围。嵌套块
+   （引用/列表项内部）不产生 entry。渲染测试逐字节核对 entry 区间内容、顺序与不重叠，并覆盖
+   BOM+frontmatter 坐标。
+2. `ReaderViewportTracker`（6.1）：新文件 `BearObs/Features/Library/ReaderViewportTracker.swift`。
+   每个顶层块经 `ReaderBlockAnchorView` 在命名坐标空间 `reader-scroll`（= ScrollView bounds，
+   视口顶边恒为 y=0）上报 frame，由 preference 收集，对 LazyVStack 的稀疏/乱序实现集可容忍；
+   纯函数 `topmostVisibleFrame` 选出"顶边所在块"（第一个未完全越过顶边的块），
+   `snapshot(frames:entries:path:)` 冻结为 `ReaderViewportSnapshot(path, anchorSourceOffset,
+   blockSourceRange, verticalOffset)`，其中 verticalOffset 为块顶相对视口顶的偏移（块跨越顶边
+   时为负）。ReaderView 在滚动全程持续记录，点击"编辑"时冻结传入会话，path 不匹配的旧快照
+   拒用。
+3. 编辑态恢复（6.2）：`SourcePreservingTextView` 以 `initialViewport: ReaderViewportSnapshot?`
+   取代像素偏移 `initialScrollOffset`。恢复流程：强制布局并把文本视图增长到全文高度（宿主首帧
+   未完成布局时几何仍真实）→ 锚点文件字节经 BOM 平移映射为草稿 UTF-8 → UTF-16 → glyph → 行顶；
+   verticalOffset 为负（块跨越顶边）时向块内深入滚动，但钳制不超过块在编辑器度量下的高度减一
+   行（排版共享前提下保持目标块可见），其余情况 `target = anchorLineTop − verticalOffset`（顶部
+   留白自然对齐）。插入点放在可见区域首个非 opaque 位置（跳过插件块等局部源码区域）；整个可见
+   区域均为 opaque 时聚焦可见起点。全文不会跳回开头。
+4. 编辑器 → 阅读器恢复（6.4/P5）：`EditorFeatureModel.readerRestoreSourceOffset` 把视口锚点从
+   草稿坐标经基线最小补丁反向平移回基线字节（替换区域内部钳制到区域起点、插入区域前边界保持
+   原位——与 `SourcePreservingTextView` 正向平移同一规则），再加 BOM 偏移；无基线快照时为 nil。
+   `ReaderView.prepareReaderRestore`（保存完成与放弃修改两条退出路径共用）把该偏移解析为包含它
+   的顶层块 index，经 `ScrollPosition(id:anchor:.top)` 配合 `scrollTargetLayout()` 在阅读面重新
+   挂载时定位。`textDidChange` 现在从实时几何重报视口锚点：在可视首行上方输入或撤销后，模型的
+   视口不再停留在旧坐标。
+5. 会话隔离（P5）：切换笔记时重置 readerViewport、editorViewportRestore、pendingRestoreBlockIndex
+   与 scrollPosition；冻结快照按 path 校验。
+6. 测试：新增 `ReaderViewportTrackerTests` 10 例（顶边在块内/块间空隙/文档顶部、稀疏乱序、
+   无出处 entry、范围外 index、真实 entry 的快照字段与反向包含解析）；`SourcePreservingTextViewTests`
+   新增 7 例——400 节（约 250 屏窗口高度）fixture 在中部（块内深入 100pt）、尾部（滚动钳制）、
+   顶部三处恢复，断言目标块可见、插入点可见且非顶部，BOM 平移用 1 字节首行段落做可区分断言，
+   纯 opaque 可见区域聚焦局部源码，无锚点置顶，以及在可视首行上方经生产编辑管线插入后模型收到
+   现坐标锚点（全程几何断言，无固定像素与延时 sleep；顺带修正 `glyphRange(forBoundingRect:)`
+   需要容器坐标的 P3 遗留偏差）；`EditorFeatureModelTests` 新增 6 例（干净草稿直映、上方插入/
+   删除前缀/替换内部/插入边界的反推、BOM、无快照为 nil）；`MarkdownReaderRendererTests` 新增
+   3 例；`ReaderViewRenderingTests` 新增 1 例。
+7. 门禁：SwiftPM 全量 338 测试通过；xcodebuild 测试计划 TEST SUCCEEDED（含 2 条 UI 冒烟）；
+   `make check`（swift-format lint --strict、Golden/WebDAV 固定装置、密钥扫描）通过；
+   `make build` Debug/Release 通过。已知限制：阅读面重新挂载的 `ScrollPosition` 定位由 SwiftUI
+   框架应用，无像素级断言（选块与坐标决策已由纯函数测试覆盖）；阅读面重挂载后首帧偏好上报前的
+   极短窗口内再次进入编辑会落到顶部。
+
 ### P6：键盘、VoiceOver 和失败路径
 
 实现并验证：

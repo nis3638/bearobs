@@ -5,14 +5,44 @@ import Markdown
     import BearObsDomain
 #endif
 
+/// One top-level rendered block together with its provenance in the original
+/// file bytes. `id` is the block's source start, so the reader can anchor
+/// scrolling in source coordinates instead of array offsets (REQ-002 6.1).
+/// Ranges are UTF-8 half-open intervals over the full file data, BOM and
+/// frontmatter included, matching the wiki link occurrence coordinates.
+public struct MarkdownRenderBlockEntry: Equatable, Sendable, Identifiable {
+    public let id: Int
+    public let sourceRange: Range<Int>
+    public let block: MarkdownRenderBlock
+
+    public init(sourceRange: Range<Int>, block: MarkdownRenderBlock) {
+        id = sourceRange.lowerBound
+        self.sourceRange = sourceRange
+        self.block = block
+    }
+}
+
 public struct MarkdownRenderDocument: Equatable, Sendable {
     public let title: String
-    public let blocks: [MarkdownRenderBlock]
+    /// The canonical block list. Blocks without provenance (tests, previews)
+    /// carry empty ranges, which never act as scroll anchors.
+    public let entries: [MarkdownRenderBlockEntry]
+
+    public init(title: String = "", entries: [MarkdownRenderBlockEntry]) {
+        self.title = title
+        self.entries = entries
+    }
 
     public init(title: String = "", blocks: [MarkdownRenderBlock]) {
-        self.title = title
-        self.blocks = blocks
+        self.init(
+            title: title,
+            entries: blocks.enumerated().map { index, block in
+                MarkdownRenderBlockEntry(sourceRange: index..<index, block: block)
+            }
+        )
     }
+
+    public var blocks: [MarkdownRenderBlock] { entries.map(\.block) }
 }
 
 public indirect enum MarkdownRenderBlock: Equatable, Sendable {
@@ -76,51 +106,99 @@ public enum MarkdownReaderRenderer {
         wikiLinks: [MarkdownWikiLinkDestination] = []
     ) -> MarkdownRenderDocument {
         let context = WikiLinkRenderContext(note: note, destinations: wikiLinks)
-        return MarkdownRenderDocument(
-            title: note.title,
-            blocks: blocks(in: note.ast.document, context: context)
+        let entries = blockEntries(
+            in: note.ast.document,
+            context: context,
+            inheritedRange: context.absoluteByteRange(note.ast.document.range)
         )
+        return MarkdownRenderDocument(title: note.title, entries: entries)
     }
 }
 
 extension MarkdownReaderRenderer {
+    /// Top-level blocks become entries so the reader can anchor scrolling in
+    /// source coordinates. A node whose own range cannot be mapped inherits
+    /// the nearest mapped ancestor range; a block with no mapped ancestor
+    /// carries an empty range and never becomes a restore anchor — a guessed
+    /// write range is never invented (REQ-002 6.1).
+    private static func blockEntries(
+        in markup: Markup,
+        context: WikiLinkRenderContext,
+        inheritedRange: Range<Int>?
+    ) -> [MarkdownRenderBlockEntry] {
+        let ownRange = context.absoluteByteRange(markup.range) ?? inheritedRange
+        return markup.children.flatMap { child in
+            blockEntries(child, context: context, inheritedRange: ownRange)
+        }
+    }
+
+    private static func blockEntries(
+        _ markup: Markup,
+        context: WikiLinkRenderContext,
+        inheritedRange: Range<Int>?
+    ) -> [MarkdownRenderBlockEntry] {
+        let ownRange = context.absoluteByteRange(markup.range) ?? inheritedRange
+        switch markup {
+        case let heading as Heading:
+            return [
+                entry(
+                    ownRange,
+                    .heading(level: heading.level, content: inline(in: heading, context: context))
+                )
+            ]
+        case let paragraph as Paragraph:
+            return [entry(ownRange, .paragraph(inline(in: paragraph, context: context)))]
+        case let quote as BlockQuote:
+            return [entry(ownRange, .quote(blocks(in: quote, context: context)))]
+        case let list as UnorderedList:
+            return [
+                entry(
+                    ownRange,
+                    .unorderedList(list.children.compactMap { listItem($0, context: context) })
+                )
+            ]
+        case let list as OrderedList:
+            return [
+                entry(
+                    ownRange,
+                    .orderedList(
+                        start: Int(list.startIndex),
+                        items: list.children.compactMap { listItem($0, context: context) }
+                    )
+                )
+            ]
+        case let code as CodeBlock:
+            return [entry(ownRange, .codeBlock(language: code.language, code: code.code))]
+        case is ThematicBreak:
+            return [entry(ownRange, .thematicBreak)]
+        case is HTMLBlock:
+            return [entry(ownRange, .fallback(fallbackSource(markup)))]
+        default:
+            return markup.childCount > 0
+                ? blockEntries(in: markup, context: context, inheritedRange: ownRange)
+                : [entry(ownRange, .fallback(fallbackSource(markup)))]
+        }
+    }
+
+    private static func entry(
+        _ range: Range<Int>?,
+        _ block: MarkdownRenderBlock
+    ) -> MarkdownRenderBlockEntry {
+        MarkdownRenderBlockEntry(sourceRange: range ?? 0..<0, block: block)
+    }
+
     private static func blocks(
         in markup: Markup,
         context: WikiLinkRenderContext
     ) -> [MarkdownRenderBlock] {
-        markup.children.flatMap { block($0, context: context) }
+        markup.children.flatMap { child in block(child, context: context) }
     }
 
     private static func block(
         _ markup: Markup,
         context: WikiLinkRenderContext
     ) -> [MarkdownRenderBlock] {
-        switch markup {
-        case let heading as Heading:
-            [.heading(level: heading.level, content: inline(in: heading, context: context))]
-        case let paragraph as Paragraph:
-            [.paragraph(inline(in: paragraph, context: context))]
-        case let quote as BlockQuote:
-            [.quote(blocks(in: quote, context: context))]
-        case let list as UnorderedList:
-            [.unorderedList(list.children.compactMap { listItem($0, context: context) })]
-        case let list as OrderedList:
-            [
-                .orderedList(
-                    start: Int(list.startIndex),
-                    items: list.children.compactMap { listItem($0, context: context) }
-                )
-            ]
-        case let code as CodeBlock:
-            [.codeBlock(language: code.language, code: code.code)]
-        case is ThematicBreak:
-            [.thematicBreak]
-        case is HTMLBlock:
-            [.fallback(fallbackSource(markup))]
-        default:
-            markup.childCount > 0
-                ? blocks(in: markup, context: context) : [.fallback(fallbackSource(markup))]
-        }
+        blockEntries(markup, context: context, inheritedRange: nil).map(\.block)
     }
 
     private static func listItem(
@@ -226,6 +304,17 @@ private struct WikiLinkRenderContext {
             destinations.map { ($0.sourceRange.lowerBound, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+    }
+
+    /// Maps a swift-markdown source range to absolute file byte coordinates,
+    /// BOM and frontmatter included. This is the same coordinate space the
+    /// wiki link occurrences use, so reader anchors and editor drafts can be
+    /// reconciled through the source snapshot's BOM shift alone.
+    func absoluteByteRange(_ sourceRange: SourceRange?) -> Range<Int>? {
+        guard let relative = body.byteRange(sourceRange) else { return nil }
+        let lower = bodyRange.lowerBound + relative.lowerBound
+        let upper = bodyRange.lowerBound + relative.upperBound
+        return lower..<upper
     }
 
     func render(_ text: Text) -> [MarkdownRenderInline] {

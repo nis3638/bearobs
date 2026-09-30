@@ -36,7 +36,10 @@ struct SourcePreservingTextView: NSViewRepresentable {
     let projection: MarkdownEditorProjection?
     /// Baseline snapshot used for the cheap first-paint projection.
     let sourceSnapshot: MarkdownSourceSnapshot?
-    let initialScrollOffset: CGFloat
+    /// The reader viewport frozen when this session began, in original file
+    /// byte coordinates. Restore scrolls the recorded block back into view
+    /// and places the insertion point inside the visible area (REQ-002 6.2).
+    let initialViewport: ReaderViewportSnapshot?
     let onDraftChange: (String) -> Void
     /// UTF-8 anchor/head of the selection at scalar boundaries.
     let onSelectionChange: (_ anchorUTF8: Int, _ headUTF8: Int) -> Void
@@ -288,6 +291,15 @@ struct SourcePreservingTextView: NSViewRepresentable {
             let selection = savedSelection(in: textView)
             lastReportedSelection = selection
             parent.onSelectionChange(selection.anchorUTF8, selection.headUTF8)
+            // Typing above the viewport shifts the first visible character
+            // without a scroll event; re-derive the anchor from live geometry
+            // so the model's viewport stays in current-draft coordinates for
+            // the reader restore on exit.
+            if let scrollView = textView.enclosingScrollView,
+                let anchor = firstVisibleScrollAnchor(in: textView, scrollView: scrollView)
+            {
+                parent.onViewportChange(anchor.utf8Offset, Double(anchor.offsetWithinLine))
+            }
             refreshInteraction(in: textView, announcing: false)
         }
 
@@ -638,26 +650,163 @@ struct SourcePreservingTextView: NSViewRepresentable {
             hasRestoredInitialContext = true
             DispatchQueue.main.async {
                 guard let textView = scrollView.documentView as? EditorTextView else { return }
-                scrollView.contentView.scroll(
-                    to: NSPoint(x: 0, y: self.parent.initialScrollOffset)
-                )
-                scrollView.reflectScrolledClipView(scrollView.contentView)
+                self.restoreReaderViewport(in: scrollView, textView: textView)
                 self.reportViewport(in: scrollView)
-                guard
-                    let layoutManager = textView.layoutManager,
-                    let container = textView.textContainer
-                else { return }
-                let glyphRange = layoutManager.glyphRange(
-                    forBoundingRect: textView.visibleRect,
-                    in: container
-                )
-                guard glyphRange.location != NSNotFound else { return }
-                let characterIndex = layoutManager.characterIndexForGlyph(at: glyphRange.location)
-                let map = self.coordinateMap(for: textView.string)
-                let utf8 = Self.utf8Offset(forUTF16: characterIndex, in: map)
-                let utf16 = Self.utf16Location(forUTF8: utf8, in: map) ?? 0
-                textView.setSelectedRange(NSRange(location: utf16, length: 0))
             }
+        }
+
+        /// Reader → editor position continuity (REQ-002 6.2): scroll the
+        /// reader's topmost visible block back to its recorded offset, then
+        /// put the insertion point at the first editable position inside the
+        /// visible area. Without a reader anchor the surface opens at the
+        /// top; the document start is never assumed when an anchor exists.
+        private func restoreReaderViewport(
+            in scrollView: NSScrollView,
+            textView: EditorTextView
+        ) {
+            guard let snapshot = parent.initialViewport else { return }
+            guard
+                let layoutManager = textView.layoutManager,
+                let container = textView.textContainer
+            else { return }
+            // The restore may run before the host completed its first layout
+            // pass; force the layout and grow the text view to the full
+            // content height so the geometry below is real, not placeholder.
+            layoutManager.ensureLayout(for: container)
+            let usedHeight =
+                layoutManager.usedRect(for: container).height
+                + textView.textContainerInset.height * 2
+            if textView.frame.height < usedHeight {
+                textView.setFrameSize(
+                    NSSize(width: textView.frame.width, height: usedHeight))
+            }
+            guard layoutManager.numberOfGlyphs > 0 else { return }
+
+            let map = coordinateMap(for: textView.string)
+            let bomShift = (parent.sourceSnapshot?.sourceInfo.hasUTF8BOM ?? false) ? 3 : 0
+            let anchorUTF8 = min(
+                max(snapshot.anchorSourceOffset - bomShift, 0),
+                textView.string.utf8.count
+            )
+            guard
+                let anchorUTF16 = Self.utf16Location(forUTF8: anchorUTF8, in: map)
+            else { return }
+            let anchorGlyph = layoutManager.glyphIndexForCharacter(at: anchorUTF16)
+            guard anchorGlyph != NSNotFound, anchorGlyph < layoutManager.numberOfGlyphs else {
+                return
+            }
+            let anchorLineRect = layoutManager.lineFragmentRect(
+                forGlyphAt: anchorGlyph,
+                effectiveRange: nil
+            )
+            let anchorLineTop = anchorLineRect.minY + textView.textContainerInset.height
+
+            // The recorded offset is the reader's block top relative to its
+            // viewport top. Scroll that far past the block's first line, but
+            // never past the block's own extent in editor metrics: typography
+            // is shared, yet a one-line block cut by a few points must still
+            // show the block itself.
+            let target: CGFloat
+            if snapshot.verticalOffset < 0 {
+                let blockHeight = Self.blockHeight(
+                    sourceRange: snapshot.blockSourceRange,
+                    bomShift: bomShift,
+                    textView: textView,
+                    map: map
+                )
+                let deeperScroll = min(
+                    -snapshot.verticalOffset,
+                    max(0, blockHeight - anchorLineRect.height)
+                )
+                target = max(0, anchorLineTop + deeperScroll)
+            } else {
+                target = max(0, anchorLineTop - snapshot.verticalOffset)
+            }
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: target))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+
+            if let insertion = firstEditableUTF8Offset(
+                inVisibleAreaOf: textView,
+                scrollView: scrollView,
+                projection: resolvedProjection(for: textView.string)
+            ), let insertionUTF16 = Self.utf16Location(forUTF8: insertion, in: map) {
+                textView.setSelectedRange(NSRange(location: insertionUTF16, length: 0))
+            }
+        }
+
+        /// The first position inside the visible area that is not part of an
+        /// opaque local-source region. When the whole visible area is opaque,
+        /// the visible start itself is returned so the caret focuses the
+        /// local source region (REQ-002 6.2).
+        private func firstEditableUTF8Offset(
+            inVisibleAreaOf textView: EditorTextView,
+            scrollView: NSScrollView,
+            projection: MarkdownEditorProjection?
+        ) -> Int? {
+            guard
+                let layoutManager = textView.layoutManager,
+                let container = textView.textContainer
+            else { return nil }
+            // glyphRange(forBoundingRect:) works in container coordinates;
+            // visibleRect is in view coordinates.
+            var bounding = textView.visibleRect
+            bounding.origin.x -= textView.textContainerOrigin.x
+            bounding.origin.y -= textView.textContainerOrigin.y
+            let glyphRange = layoutManager.glyphRange(
+                forBoundingRect: bounding,
+                in: container
+            )
+            guard
+                glyphRange.location != NSNotFound,
+                glyphRange.length > 0,
+                NSMaxRange(glyphRange) <= layoutManager.numberOfGlyphs
+            else { return nil }
+            let map = coordinateMap(for: textView.string)
+            let firstCharacter = layoutManager.characterIndexForGlyph(
+                at: glyphRange.location
+            )
+            let lastCharacter = layoutManager.characterIndexForGlyph(
+                at: NSMaxRange(glyphRange) - 1
+            )
+            guard firstCharacter != NSNotFound, lastCharacter != NSNotFound else { return nil }
+            var candidate = Self.utf8Offset(forUTF16: firstCharacter, in: map)
+            let visibleEnd = Self.utf8Offset(forUTF16: lastCharacter, in: map)
+            if let runs = projection?.runs {
+                for run in runs where run.token == .opaque {
+                    guard run.range.upperBound > candidate else { continue }
+                    guard run.range.lowerBound <= candidate else { break }
+                    candidate = run.range.upperBound
+                }
+            }
+            guard candidate <= visibleEnd else {
+                return Self.utf8Offset(forUTF16: firstCharacter, in: map)
+            }
+            return candidate
+        }
+
+        /// The editor-space height of the anchored block's source range.
+        private static func blockHeight(
+            sourceRange: Range<Int>,
+            bomShift: Int,
+            textView: EditorTextView,
+            map: MarkdownTextCoordinateMap
+        ) -> CGFloat {
+            guard
+                let layoutManager = textView.layoutManager,
+                let container = textView.textContainer,
+                let lowerUTF16 = Self.utf16Location(
+                    forUTF8: max(sourceRange.lowerBound - bomShift, 0), in: map),
+                let upperUTF16 = Self.utf16Location(
+                    forUTF8: min(sourceRange.upperBound - bomShift, textView.string.utf8.count),
+                    in: map),
+                lowerUTF16 < upperUTF16
+            else { return 0 }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: NSRange(location: lowerUTF16, length: upperUTF16 - lowerUTF16),
+                actualCharacterRange: nil
+            )
+            guard glyphRange.length > 0 else { return 0 }
+            return layoutManager.boundingRect(forGlyphRange: glyphRange, in: container).height
         }
 
         // MARK: - Coordinates

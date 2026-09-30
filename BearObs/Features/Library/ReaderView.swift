@@ -40,7 +40,15 @@ public struct ReaderView: View {
     @State private var destination: VaultPath?
     @State private var editorModel: EditorFeatureModel?
     @State private var isDiscardConfirmationPresented = false
-    @State private var readerScrollOffset: CGFloat = 0
+    /// Continuously tracked reader viewport in source coordinates; frozen
+    /// when the user enters edit mode (REQ-002 6.1).
+    @State private var readerViewport: ReaderViewportSnapshot?
+    /// The viewport frozen for the active editing session.
+    @State private var editorViewportRestore: ReaderViewportSnapshot?
+    /// Where the reader should reposition itself when the editing session
+    /// ends, expressed as a top-level block index in the rendered document.
+    @State private var pendingRestoreBlockIndex: Int?
+    @State private var scrollPosition = ScrollPosition()
     private let source: ReaderDataSource
     private let editorSource: EditorDataSource?
     private let onUnsavedChangesChanged: (Bool) -> Void
@@ -88,6 +96,12 @@ public struct ReaderView: View {
                     editorModel = nil
                     isDiscardConfirmationPresented = false
                     destination = nil
+                    // A new note must not inherit the old session's position
+                    // state (REQ-002 P5).
+                    readerViewport = nil
+                    editorViewportRestore = nil
+                    pendingRestoreBlockIndex = nil
+                    scrollPosition = ScrollPosition()
                     model = ReaderFeatureModel(
                         path: requestedPath,
                         source: source,
@@ -157,7 +171,12 @@ public struct ReaderView: View {
                 "放弃未保存的修改？",
                 isPresented: $isDiscardConfirmationPresented
             ) {
-                Button("放弃修改", role: .destructive) { editorModel = nil }
+                Button("放弃修改", role: .destructive) {
+                    if let editorModel {
+                        prepareReaderRestore(from: editorModel)
+                    }
+                    editorModel = nil
+                }
                 Button("继续编辑", role: .cancel) {}
             } message: {
                 Text("这篇笔记的本地草稿尚未保存。")
@@ -202,7 +221,7 @@ public struct ReaderView: View {
         if let editorModel {
             InlineMarkdownEditor(
                 model: editorModel,
-                initialScrollOffset: readerScrollOffset,
+                initialViewport: editorViewportRestore,
                 finishEditing: finishEditing,
                 retryReaderLoad: { Task { await model.load() } },
                 save: { Task { await saveEditing() } }
@@ -213,30 +232,7 @@ public struct ReaderView: View {
                 ProgressView("正在打开笔记")
                     .accessibilityIdentifier("reader-loading")
             case .content(let document):
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        ReaderBlocksView(blocks: document.blocks)
-                    }
-                    .frame(
-                        maxWidth: ReaderEditorLayoutToken.contentMaxWidth,
-                        alignment: .leading
-                    )
-                    .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
-                    .padding(.vertical, ReaderEditorLayoutToken.contentVerticalPadding)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: ReaderScrollOffsetPreferenceKey.self,
-                                value: proxy.frame(in: .named("reader-scroll")).minY
-                            )
-                        }
-                    )
-                }
-                .coordinateSpace(name: "reader-scroll")
-                .onPreferenceChange(ReaderScrollOffsetPreferenceKey.self) { offset in
-                    readerScrollOffset = max(0, -offset)
-                }
-                .accessibilityIdentifier("reader-content")
+                readerContent(document)
             case .failure:
                 ContentUnavailableView {
                     Label("无法打开笔记", systemImage: "doc.badge.exclamationmark")
@@ -248,6 +244,40 @@ public struct ReaderView: View {
                 .accessibilityIdentifier("reader-error")
             }
         }
+    }
+
+    /// The reading surface. Every top-level block is anchored so the tracker
+    /// can keep recording the viewport in source coordinates; a pending
+    /// restore target from a finished editing session positions the scroll
+    /// on first layout (REQ-002 6.1/6.4).
+    private func readerContent(_ document: MarkdownRenderDocument) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ReaderDocumentBlocksView(entries: document.entries)
+            }
+            .frame(
+                maxWidth: ReaderEditorLayoutToken.contentMaxWidth,
+                alignment: .leading
+            )
+            .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
+            .padding(.vertical, ReaderEditorLayoutToken.contentVerticalPadding)
+            .scrollTargetLayout()
+        }
+        .scrollPosition($scrollPosition)
+        .coordinateSpace(name: ReaderViewportTracker.scrollCoordinateSpace)
+        .onPreferenceChange(ReaderBlockFramesPreferenceKey.self) { frames in
+            readerViewport = ReaderViewportTracker.snapshot(
+                frames: frames,
+                entries: document.entries,
+                path: requestedPath
+            )
+        }
+        .onAppear {
+            guard let index = pendingRestoreBlockIndex else { return }
+            scrollPosition = ScrollPosition(id: index, anchor: .top)
+            pendingRestoreBlockIndex = nil
+        }
+        .accessibilityIdentifier("reader-content")
     }
 
     private var title: String {
@@ -276,6 +306,11 @@ public struct ReaderView: View {
     }
 
     private func beginEditing(with source: EditorDataSource) {
+        // Freeze the continuously tracked viewport for this session; a stale
+        // snapshot from another note must never steer the new one.
+        let frozenViewport =
+            readerViewport?.path == requestedPath ? readerViewport : nil
+        editorViewportRestore = frozenViewport
         editorModel = EditorFeatureModel(path: requestedPath, source: source)
     }
 
@@ -284,8 +319,36 @@ public struct ReaderView: View {
         if editorModel.isDirty {
             isDiscardConfirmationPresented = true
         } else {
+            prepareReaderRestore(from: editorModel)
             self.editorModel = nil
         }
+    }
+
+    /// Editor → reader continuity: translate the editor's viewport anchor
+    /// into original-file bytes and resolve it to a rendered block, so
+    /// returning to reading shows the content the user was just editing
+    /// near (REQ-002 P5).
+    private func prepareReaderRestore(from editorModel: EditorFeatureModel) {
+        editorViewportRestore = nil
+        guard let sourceOffset = editorModel.readerRestoreSourceOffset else {
+            pendingRestoreBlockIndex = nil
+            return
+        }
+        guard case .content(let document) = model.state else {
+            pendingRestoreBlockIndex = nil
+            return
+        }
+        guard
+            let index = ReaderViewportTracker.entryIndex(
+                containing: sourceOffset,
+                in: document.entries
+            )
+        else {
+            pendingRestoreBlockIndex = nil
+            return
+        }
+        pendingRestoreBlockIndex = index
+        scrollPosition = ScrollPosition(id: index, anchor: .top)
     }
 
     private func saveEditing() async {
@@ -301,20 +364,20 @@ public struct ReaderView: View {
 /// without introducing a second editor or a second save path.
 struct InlineMarkdownEditor: View {
     let model: EditorFeatureModel
-    let initialScrollOffset: CGFloat
+    let initialViewport: ReaderViewportSnapshot?
     let finishEditing: () -> Void
     let retryReaderLoad: () -> Void
     let save: () -> Void
 
     init(
         model: EditorFeatureModel,
-        initialScrollOffset: CGFloat = 0,
+        initialViewport: ReaderViewportSnapshot? = nil,
         finishEditing: @escaping () -> Void,
         retryReaderLoad: @escaping () -> Void,
         save: @escaping () -> Void
     ) {
         self.model = model
-        self.initialScrollOffset = initialScrollOffset
+        self.initialViewport = initialViewport
         self.finishEditing = finishEditing
         self.retryReaderLoad = retryReaderLoad
         self.save = save
@@ -362,7 +425,7 @@ struct InlineMarkdownEditor: View {
                 revision: model.draftRevision,
                 projection: model.projectionEngine.projection,
                 sourceSnapshot: model.sourceSnapshot,
-                initialScrollOffset: initialScrollOffset,
+                initialViewport: initialViewport,
                 onDraftChange: model.updateDraft,
                 onSelectionChange: { anchor, head in
                     model.updateSelection(anchorUTF8: anchor, headUTF8: head)
@@ -407,14 +470,6 @@ struct InlineMarkdownEditor: View {
         .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct ReaderScrollOffsetPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
@@ -464,6 +519,21 @@ private struct InlineEditorFailureView: View {
             "当前无法读取可编辑的原始 Markdown。"
         case .saveFailed:
             "原文件保持不变，请检查磁盘空间和文件权限后重试。"
+        }
+    }
+}
+
+/// Top-level rendered blocks with viewport anchors: each block reports its
+/// frame to the tracker so the reader can freeze its position in source
+/// coordinates. Nested blocks recurse through `ReaderBlocksView` unanchored.
+struct ReaderDocumentBlocksView: View {
+    let entries: [MarkdownRenderBlockEntry]
+
+    var body: some View {
+        ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+            ReaderBlockAnchorView(entryIndex: index) {
+                ReaderBlockView(block: entry.block)
+            }
         }
     }
 }

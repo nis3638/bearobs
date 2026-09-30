@@ -405,6 +405,105 @@ final class EditorFeatureModelTests: XCTestCase {
         XCTAssertEqual(modelB.draft, "B edited")
     }
 
+    // MARK: - Reader restore anchor (REQ-002 P5)
+
+    func testReaderRestoreSourceOffsetIsNilWithoutBaselineSnapshot() async throws {
+        let model = try makeModel()
+        await model.load()
+
+        model.updateViewport(utf8Anchor: 4, verticalOffset: 0)
+
+        XCTAssertNil(
+            model.readerRestoreSourceOffset,
+            "Without a baseline snapshot there is no source position to restore"
+        )
+    }
+
+    func testReaderRestoreSourceOffsetMapsCleanDraftDirectly() async throws {
+        let baseline = "alpha\nbeta\ngamma\ndelta\n"
+        let model = try makeModel(document: Self.makeSnapshotDocument(baseline))
+        await model.load()
+
+        let gammaOffset = "alpha\nbeta\n".utf8ByteCount
+        model.updateViewport(utf8Anchor: gammaOffset + 2, verticalOffset: 3)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, gammaOffset + 2)
+    }
+
+    func testReaderRestoreSourceOffsetTranslatesEditsAboveTheAnchorBackToBaseline() async throws {
+        let baseline = "alpha\nbeta\ngamma\ndelta\n"
+        let gammaOffset = "alpha\nbeta\n".utf8ByteCount
+        let model = try makeModel(document: Self.makeSnapshotDocument(baseline))
+        await model.load()
+
+        // Typed two bytes before the visible area: draft coordinates shift,
+        // but the reader reloads baseline bytes, so the anchor must map back.
+        model.updateDraft("XX" + baseline)
+        let gammaOffsetInDraft = gammaOffset + 2
+        model.updateViewport(utf8Anchor: gammaOffsetInDraft + 2, verticalOffset: 0)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, gammaOffset + 2)
+    }
+
+    func testReaderRestoreSourceOffsetTranslatesDeletedPrefixBackToBaseline() async throws {
+        let baseline = "alpha\nbeta\ngamma\ndelta\n"
+        let deltaOffset = "alpha\nbeta\ngamma\n".utf8ByteCount
+        let model = try makeModel(document: Self.makeSnapshotDocument(baseline))
+        await model.load()
+
+        // The user deleted everything before the tail; the viewport anchor
+        // sits inside the surviving tail, whose content lives further into
+        // the baseline than the draft offset suggests.
+        model.updateDraft("delta\n")
+        model.updateViewport(utf8Anchor: 4, verticalOffset: 0)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, deltaOffset + 4)
+    }
+
+    func testReaderRestoreSourceOffsetAddsBOMShift() async throws {
+        let baseline = "alpha\nbeta\n"
+        let model = try makeModel(document: Self.makeSnapshotDocument(baseline, hasBOM: true))
+        await model.load()
+
+        model.updateViewport(utf8Anchor: 8, verticalOffset: 0)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, 8 + 3)
+    }
+
+    func testReaderRestoreSourceOffsetInsideReplacementClampsToRegionStart() async throws {
+        let baseline = "alpha\nbeta\n"
+        let model = try makeModel(document: Self.makeSnapshotDocument(baseline))
+        await model.load()
+
+        // Rewrote the first word in place: the anchor sits inside the
+        // replaced region and clamps to its start.
+        model.updateDraft("omega\nbeta\n")
+        model.updateViewport(utf8Anchor: 2, verticalOffset: 0)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, 0)
+
+        // An inserted region's leading boundary keeps its offset — the same
+        // boundary rule the forward translation uses — so the anchor
+        // attaches to the content before the new bytes.
+        model.updateDraft("alphabetical\nbeta\n")
+        model.updateViewport(utf8Anchor: 5, verticalOffset: 0)
+
+        XCTAssertEqual(model.readerRestoreSourceOffset, 5)
+    }
+
+    private static func makeSnapshotDocument(_ text: String, hasBOM: Bool = false) -> EditorDocument
+    {
+        let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+        let data = Data(hasBOM ? bom : []) + Data(text.utf8)
+        let snapshot = try! MarkdownSourceMapParser.parse(data)
+        return EditorDocument(
+            text: snapshot.text,
+            contentHash: try! ContentHash(hex: String(repeating: "a", count: 64)),
+            sourceInfo: snapshot.sourceInfo,
+            sourceSnapshot: snapshot
+        )
+    }
+
     private func makeModel(
         debounce: Duration = .zero,
         build:
@@ -533,4 +632,8 @@ private final class ParseGate: @unchecked Sendable {
             }
         }
     }
+}
+
+extension String {
+    fileprivate var utf8ByteCount: Int { Data(utf8).count }
 }

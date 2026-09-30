@@ -354,6 +354,206 @@ final class SourcePreservingTextViewTests: XCTestCase {
         XCTAssertEqual(after.offset, before.offset, accuracy: 1.0)
     }
 
+    // MARK: - Reader viewport restore (REQ-002 P5)
+
+    func testRestoreScrollsToMidDocumentAnchorWithInsertionInVisibleArea() async throws {
+        let fixture = Self.makeContinuityFixture(sectionCount: 400)
+        let section = fixture.sections[200]
+        // The reader's top edge sat 100pt into this ten-line paragraph.
+        let anchor = ReaderViewportSnapshot(
+            path: try VaultPath(decodedRelativePath: "Draft.md"),
+            anchorSourceOffset: section.paragraphStart,
+            blockSourceRange: section.paragraphRange,
+            verticalOffset: -100
+        )
+
+        let surface = try await makeRestorableSurface(source: fixture.source, viewport: anchor)
+        let textView = try XCTUnwrap(surface.textView)
+        let scrollView = surface.scrollView
+
+        let scrollY = scrollView.contentView.bounds.minY
+        XCTAssertGreaterThan(
+            scrollY, 5_000,
+            "Restoring a mid-document anchor must not open the editor at the top"
+        )
+
+        let visible = scrollView.contentView.bounds
+        let blockRect = try contentRect(ofUTF8Range: section.paragraphRange, in: textView)
+        XCTAssertTrue(
+            blockRect.intersects(visible),
+            "The anchored block must be visible after restore (block \(blockRect), visible \(visible))"
+        )
+
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        XCTAssertGreaterThan(insertion, 0)
+        let insertionTop = try lineTop(ofUTF8Offset: insertion, in: textView)
+        XCTAssertTrue(
+            insertionTop >= visible.minY && insertionTop < visible.maxY,
+            "The insertion point must sit inside the visible area"
+        )
+    }
+
+    func testRestoreAtDocumentTailKeepsLastBlockAndInsertionVisible() async throws {
+        let fixture = Self.makeContinuityFixture(sectionCount: 400)
+        let section = fixture.sections[fixture.sections.count - 1]
+        let anchor = ReaderViewportSnapshot(
+            path: try VaultPath(decodedRelativePath: "Draft.md"),
+            anchorSourceOffset: section.paragraphStart,
+            blockSourceRange: section.paragraphRange,
+            verticalOffset: 0
+        )
+
+        let surface = try await makeRestorableSurface(source: fixture.source, viewport: anchor)
+        let textView = try XCTUnwrap(surface.textView)
+        let scrollView = surface.scrollView
+
+        XCTAssertGreaterThan(scrollView.contentView.bounds.minY, 5_000)
+
+        let visible = scrollView.contentView.bounds
+        let blockRect = try contentRect(ofUTF8Range: section.paragraphRange, in: textView)
+        XCTAssertTrue(
+            blockRect.intersects(visible),
+            "The tail block must stay visible even when the scroll clamps at the end"
+        )
+
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        let insertionTop = try lineTop(ofUTF8Offset: insertion, in: textView)
+        XCTAssertTrue(insertionTop >= visible.minY && insertionTop < visible.maxY)
+    }
+
+    func testRestoreAtDocumentTopKeepsTheDocumentStart() async throws {
+        let fixture = Self.makeContinuityFixture(sectionCount: 40)
+        let section = fixture.sections[0]
+        // The reader at the very top records its content padding as the
+        // block's positive offset from the viewport top.
+        let anchor = ReaderViewportSnapshot(
+            path: try VaultPath(decodedRelativePath: "Draft.md"),
+            anchorSourceOffset: section.headingStart,
+            blockSourceRange: section.paragraphRange,
+            verticalOffset: 24
+        )
+
+        let surface = try await makeRestorableSurface(source: fixture.source, viewport: anchor)
+        let textView = try XCTUnwrap(surface.textView)
+
+        XCTAssertEqual(
+            surface.scrollView.contentView.bounds.minY, 0,
+            accuracy: 1.0
+        )
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        XCTAssertEqual(insertion, 0)
+    }
+
+    func testRestoreAppliesBOMShiftBeforeMappingTheAnchor() async throws {
+        let paragraphLines: (Int) -> [String] = { section in
+            ["A"] + (1..<10).map { "第\(section)节内容行 \($0)。" }
+        }
+        let body = Self.makeContinuityFixture(
+            sectionCount: 80,
+            paragraphLines: paragraphLines
+        )
+        let source = "\u{FEFF}" + body.source
+        let section = body.sections[40]
+        // File coordinates include the 3-byte BOM.
+        let anchor = ReaderViewportSnapshot(
+            path: try VaultPath(decodedRelativePath: "Draft.md"),
+            anchorSourceOffset: section.paragraphStart + 3,
+            blockSourceRange: section.paragraphRange,
+            verticalOffset: 0
+        )
+
+        let surface = try await makeRestorableSurface(source: source, viewport: anchor)
+        let textView = try XCTUnwrap(surface.textView)
+
+        XCTAssertGreaterThan(surface.scrollView.contentView.bounds.minY, 1_000)
+
+        // The anchor line must be the paragraph's first line ("A"), i.e. the
+        // anchor minus the BOM shift — not three bytes deeper into the block.
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        XCTAssertEqual(insertion, section.paragraphStart)
+    }
+
+    func testRestoreFocusesTheOpaqueRegionWhenTheVisibleAreaIsFullyOpaque() async throws {
+        let fixture = Self.makeOpaqueFixture()
+        let anchor = ReaderViewportSnapshot(
+            path: try VaultPath(decodedRelativePath: "Draft.md"),
+            anchorSourceOffset: fixture.fenceRange.lowerBound,
+            blockSourceRange: fixture.fenceRange,
+            verticalOffset: 0
+        )
+
+        let surface = try await makeRestorableSurface(source: fixture.source, viewport: anchor)
+        let textView = try XCTUnwrap(surface.textView)
+
+        XCTAssertGreaterThan(surface.scrollView.contentView.bounds.minY, 100)
+
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        let visible = surface.scrollView.contentView.bounds
+        let insertionTop = try lineTop(ofUTF8Offset: insertion, in: textView)
+        XCTAssertTrue(insertionTop >= visible.minY && insertionTop < visible.maxY)
+        // The whole visible area is the local source region, so the caret
+        // focuses it instead of an imaginary safe position.
+        XCTAssertGreaterThanOrEqual(insertion, fixture.fenceRange.lowerBound - 4)
+        XCTAssertLessThanOrEqual(insertion, fixture.fenceRange.upperBound)
+    }
+
+    func testRestoreWithoutReaderAnchorOpensAtTheTop() async throws {
+        let text = (1...200).map { "第\($0)行的内容行\n" }.joined()
+        let surface = try await makeLoadedSurface(text: text)
+        let textView = try XCTUnwrap(surface.textView)
+
+        XCTAssertEqual(surface.scrollView.contentView.bounds.minY, 0, accuracy: 1.0)
+        let insertion = try utf8Offset(
+            ofUTF16: textView.selectedRange().location, in: textView.string)
+        XCTAssertEqual(insertion, 0)
+    }
+
+    func testTypingAboveTheViewportReReportsTheAnchorInCurrentDraftCoordinates() async throws {
+        let text = (1...120).map { "第\($0)行的内容行\n" }.joined()
+        let surface = try await makeLoadedSurface(text: text)
+        let scrollView = surface.scrollView
+        let textView = try XCTUnwrap(surface.textView)
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let container = try XCTUnwrap(textView.textContainer)
+
+        scrollView.frame = NSRect(x: 0, y: 0, width: 640, height: 300)
+        layoutManager.ensureLayout(for: container)
+        textView.frame.size.height =
+            layoutManager.usedRect(for: container).height
+            + textView.textContainerInset.height * 2
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 800))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let before = try XCTUnwrap(viewports.last)
+        XCTAssertGreaterThan(before.anchor, 0)
+
+        // Insert two bytes at the end of the line above the first visible
+        // one through the same editing pipeline programmatic edits use. The
+        // selection stays inside the viewport and no scroll event fires, so
+        // only a re-derivation inside the draft-change path can report the
+        // shifted anchor.
+        let map = MarkdownTextCoordinateMap(text: textView.string)
+        let insertionUTF8 = before.anchor - 1
+        let insertionUTF16 = try XCTUnwrap(
+            map.utf16Range(forUTF8: insertionUTF8..<insertionUTF8)
+        ).lowerBound
+        let range = NSRange(location: insertionUTF16, length: 0)
+        XCTAssertTrue(textView.shouldChangeText(in: range, replacementString: "XX"))
+        try XCTUnwrap(textView.textStorage).replaceCharacters(in: range, with: "XX")
+        textView.didChangeText()
+
+        let after = try XCTUnwrap(viewports.last)
+        XCTAssertEqual(
+            after.anchor, before.anchor + 2,
+            "Typing above the viewport shifts the first visible character; the model must see current-draft coordinates"
+        )
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -379,6 +579,26 @@ final class SourcePreservingTextViewTests: XCTestCase {
         let model = try makeModel(document: document)
         await model.load()
         let surface = makeSurface(model: model)
+        await drainQueuedRestoreBlock()
+        return surface
+    }
+
+    /// A surface whose document carries a real source snapshot, restoring the
+    /// given reader viewport on first paint.
+    private func makeRestorableSurface(
+        source: String,
+        viewport: ReaderViewportSnapshot?
+    ) async throws -> Surface {
+        let snapshot = try MarkdownSourceMapParser.parse(Data(source.utf8))
+        let document = EditorDocument(
+            text: snapshot.text,
+            contentHash: snapshot.contentHash,
+            sourceInfo: snapshot.sourceInfo,
+            sourceSnapshot: snapshot
+        )
+        let model = try makeModel(document: document)
+        await model.load()
+        let surface = makeSurface(model: model, initialViewport: viewport)
         await drainQueuedRestoreBlock()
         return surface
     }
@@ -417,7 +637,10 @@ final class SourcePreservingTextViewTests: XCTestCase {
         await Task.yield()
     }
 
-    private func makeSurface(model: EditorFeatureModel) -> Surface {
+    private func makeSurface(
+        model: EditorFeatureModel,
+        initialViewport: ReaderViewportSnapshot? = nil
+    ) -> Surface {
         draftChanges = []
         selections = []
         viewports = []
@@ -429,7 +652,7 @@ final class SourcePreservingTextViewTests: XCTestCase {
             revision: model.draftRevision,
             projection: model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
-            initialScrollOffset: 0,
+            initialViewport: initialViewport,
             onDraftChange: { text in
                 model.updateDraft(text)
                 self.draftChanges.append(text)
@@ -476,7 +699,7 @@ final class SourcePreservingTextViewTests: XCTestCase {
             revision: model.draftRevision,
             projection: overrideProjection ?? model.projectionEngine.projection,
             sourceSnapshot: model.sourceSnapshot,
-            initialScrollOffset: 0,
+            initialViewport: nil,
             onDraftChange: { text in
                 model.updateDraft(text)
                 self.draftChanges.append(text)
@@ -514,5 +737,122 @@ final class SourcePreservingTextViewTests: XCTestCase {
             offset += byteLength + 1
         }
         return ""
+    }
+
+    // MARK: - Continuity fixtures
+
+    private struct ContinuityFixture {
+        struct Section {
+            let headingStart: Int
+            let paragraphStart: Int
+            let paragraphRange: Range<Int>
+        }
+
+        let source: String
+        let sections: [Section]
+    }
+
+    /// A long structured document: each section is a heading plus a
+    /// ten-line paragraph, tall enough that `sectionCount: 400` exceeds 200
+    /// window heights for the acceptance fixture.
+    private static func makeContinuityFixture(
+        sectionCount: Int,
+        paragraphLines: (Int) -> [String] = { section in
+            (0..<10).map { "第\(section)节内容行 \($0)：锚点恢复验证段落。" }
+        }
+    ) -> ContinuityFixture {
+        var source = ""
+        var sections: [ContinuityFixture.Section] = []
+        for section in 0..<sectionCount {
+            let heading = "## 第\(section)节 标题\n\n"
+            let lines = paragraphLines(section)
+            let paragraphBody = lines.joined(separator: "\n")
+            let paragraph = paragraphBody + "\n\n"
+            let headingStart = source.utf8.count
+            source += heading
+            let paragraphStart = source.utf8.count
+            source += paragraph
+            let paragraphEnd = paragraphStart + Data(paragraphBody.utf8).count + 1
+            sections.append(
+                ContinuityFixture.Section(
+                    headingStart: headingStart,
+                    paragraphStart: paragraphStart,
+                    paragraphRange: paragraphStart..<paragraphEnd
+                )
+            )
+        }
+        return ContinuityFixture(source: source, sections: sections)
+    }
+
+    private static func makeOpaqueFixture() -> (source: String, fenceRange: Range<Int>) {
+        var source = (0..<10).map { "## 前置第\($0)节\n\n前置内容段落 \($0)。\n\n" }.joined()
+        let fenceStart = source.utf8.count
+        let fence =
+            "```dataview\n"
+            + (0..<60).map { "Dataview 查询行 \($0)。" }.joined(separator: "\n")
+            + "\n```\n\n"
+        source += fence
+        let fenceEnd = fenceStart + Data(fence.utf8).count
+        source += (0..<10).map { "## 后置第\($0)节\n\n后置内容段落 \($0)。\n\n" }.joined()
+        return (source, fenceStart..<fenceEnd)
+    }
+
+    // MARK: - Geometry helpers
+
+    private func utf8Offset(ofUTF16 location: Int, in text: String) throws -> Int {
+        let map = MarkdownTextCoordinateMap(text: text)
+        var probe = location
+        while probe >= 0 {
+            if let offset = map.utf8Offset(forUTF16: probe) {
+                return offset
+            }
+            probe -= 1
+        }
+        return 0
+    }
+
+    private func utf16Location(ofUTF8 offset: Int, in text: String) throws -> Int {
+        let map = MarkdownTextCoordinateMap(text: text)
+        guard let range = map.utf16Range(forUTF8: offset..<offset) else {
+            throw NSError(domain: "restore-tests", code: 1)
+        }
+        return range.lowerBound
+    }
+
+    /// Bounding rect of a UTF-8 range in scroll content coordinates (the
+    /// text container's inset included), matching how the production code
+    /// maps line fragments onto scroll positions.
+    private func contentRect(
+        ofUTF8Range range: Range<Int>,
+        in textView: SourcePreservingTextView.EditorTextView
+    ) throws -> CGRect {
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let container = try XCTUnwrap(textView.textContainer)
+        let lower = try utf16Location(ofUTF8: range.lowerBound, in: textView.string)
+        let upper = try utf16Location(ofUTF8: range.upperBound, in: textView.string)
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: lower, length: upper - lower),
+            actualCharacterRange: nil
+        )
+        guard glyphRange.length > 0 else {
+            throw NSError(domain: "restore-tests", code: 2)
+        }
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+        rect.origin.y += textView.textContainerInset.height
+        return rect
+    }
+
+    private func lineTop(
+        ofUTF8Offset offset: Int,
+        in textView: SourcePreservingTextView.EditorTextView
+    ) throws -> CGFloat {
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let utf16 = try utf16Location(ofUTF8: offset, in: textView.string)
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: utf16)
+        guard glyphIndex != NSNotFound, glyphIndex < layoutManager.numberOfGlyphs else {
+            throw NSError(domain: "restore-tests", code: 3)
+        }
+        return layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+            .minY + textView.textContainerInset.height
     }
 }

@@ -63,6 +63,26 @@ final class ReaderViewRenderingTests: XCTestCase {
         XCTAssertNotNil(renderer.cgImage)
     }
 
+    func testReaderDocumentBlocksRenderTopLevelEntriesWithAnchors() throws {
+        let source = "# 标题\n\n正文段落，验证锚点视图渲染。\n\n- 列表项\n"
+        let note = try MarkdownNoteParser.parse(
+            Data(source.utf8),
+            at: try VaultPath(decodedRelativePath: "Anchors.md")
+        )
+        let document = MarkdownReaderRenderer.render(note)
+        XCTAssertEqual(document.entries.count, 3)
+
+        let renderer = ImageRenderer(
+            content: ScrollView {
+                ReaderDocumentBlocksView(entries: document.entries)
+                    .frame(width: 640, alignment: .leading)
+                    .padding()
+            }
+        )
+
+        XCTAssertNotNil(renderer.cgImage)
+    }
+
     func testInternalRouteRoundTripsCanonicalPathAndRejectsForgedURLs() throws {
         let path = try VaultPath(decodedRelativePath: "空 格/100% Note.md")
         let url = ReaderInternalRoute.url(for: path)

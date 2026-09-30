@@ -251,6 +251,53 @@ public final class EditorFeatureModel {
         isMarkedTextActive = active
     }
 
+    /// The current viewport anchor translated into original-file UTF-8 byte
+    /// coordinates (BOM included), so finishing an editing session can hand
+    /// the reader a source position to restore (REQ-002 P5). Draft edits
+    /// above the anchor shift draft offsets; the baseline mapping is
+    /// recovered from the minimal patch between baseline and draft. Nil when
+    /// no baseline snapshot exists — nothing can be restored then.
+    public var readerRestoreSourceOffset: Int? {
+        guard let snapshot = sourceSnapshot else { return nil }
+        let baselineOffset = Self.baselineOffset(
+            draftOffset: viewport.utf8Anchor,
+            baseline: snapshot.text,
+            draft: draft
+        )
+        return baselineOffset + (snapshot.sourceInfo.hasUTF8BOM ? 3 : 0)
+    }
+
+    /// Maps a draft offset back to baseline coordinates by inverting the
+    /// minimal patch between the two texts: offsets inside a replacement
+    /// clamp to the replaced region's start, offsets past the end clamp to
+    /// the baseline length.
+    static func baselineOffset(draftOffset: Int, baseline: String, draft: String) -> Int {
+        guard baseline != draft else {
+            return min(max(0, draftOffset), baseline.utf8.count)
+        }
+        guard
+            let patches = try? MarkdownSourcePatchBuilder.makePatches(
+                from: Data(baseline.utf8),
+                to: Data(draft.utf8)
+            )
+        else {
+            return min(max(0, draftOffset), baseline.utf8.count)
+        }
+        var shift = 0
+        for patch in patches {
+            let draftLower = patch.range.lowerBound + shift
+            let draftUpper = draftLower + patch.replacement.count
+            if draftOffset < draftLower {
+                return draftOffset - shift
+            }
+            if draftOffset < draftUpper {
+                return patch.range.lowerBound
+            }
+            shift += patch.replacement.count - patch.range.count
+        }
+        return min(max(0, draftOffset - shift), baseline.utf8.count)
+    }
+
     public func dismissFailure() {
         failure = nil
     }
