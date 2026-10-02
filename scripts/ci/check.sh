@@ -5,11 +5,17 @@ source "$(dirname "$0")/common.sh"
 
 assert_xcode_version
 
+"$ROOT_DIR/scripts/tests/verify_ios_app_test.sh"
+"$ROOT_DIR/scripts/tests/verify_ios_deployment_test.sh"
+"$ROOT_DIR/scripts/tests/verify_ios_coverage_test.sh"
+"$ROOT_DIR/scripts/ci/verify-ios-deployment.sh"
+
 xcrun swift-format lint --strict --recursive \
     "$ROOT_DIR/Package.swift" \
     "$ROOT_DIR/BearObs" \
     "$ROOT_DIR/BearObsTests" \
     "$ROOT_DIR/BearObsUITests" \
+    "$ROOT_DIR/BearObsIOSUITests" \
     "$ROOT_DIR/Spikes/M007GRDBFTS5/Package.swift" \
     "$ROOT_DIR/Spikes/M007GRDBFTS5/Sources" \
     "$ROOT_DIR/Spikes/M007GRDBFTS5/Tests" \

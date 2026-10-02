@@ -252,6 +252,12 @@ final class ReaderViewRenderingTests: XCTestCase {
 
     func testAccessibilityCopyDescribesMeaningWithoutRelyingOnColorOrIcon() {
         XCTAssertEqual(
+            LibraryAvailabilityPresentation.title(count: 2),
+            "有 2 个源文件暂不可用"
+        )
+        XCTAssertFalse(LibraryAvailabilityPresentation.message.contains("/"))
+        XCTAssertEqual(LibraryAvailabilityPresentation.retryTitle, "重试")
+        XCTAssertEqual(
             LibraryAccessibilityText.favoriteButtonLabel(
                 isReady: false,
                 isFavorite: false
@@ -382,6 +388,37 @@ final class ReaderViewRenderingTests: XCTestCase {
             XCTAssertNotNil(renderer.cgImage, "Failed in \(colorScheme) mode")
         }
     }
+
+    #if os(iOS)
+        /// 自动化只证明 AX5 下可生成布局；M-IOS-5.9 的浅/深色人工走查仍是明确待办。
+        func testCompactTagListRendersAtLargestAccessibilitySizeInBothColorSchemes() async {
+            let tag = IndexedTagSummary(
+                normalizedName: "project/mobile",
+                displayName: "Project/很长的移动端辅助功能标签名称",
+                noteCount: 12_345
+            )
+            let model = TagsFeatureModel(
+                source: TagLibraryDataSource(
+                    loadTags: { [tag] },
+                    loadNotes: { _ in [] }
+                )
+            )
+            await model.load()
+
+            for colorScheme in [ColorScheme.light, .dark] {
+                let renderer = ImageRenderer(
+                    content: NavigationStack {
+                        CompactTagList(tagsModel: model)
+                    }
+                    .frame(width: 390, height: 844)
+                    .environment(\.dynamicTypeSize, .accessibility5)
+                    .environment(\.colorScheme, colorScheme)
+                )
+
+                XCTAssertNotNil(renderer.cgImage, "Failed in \(colorScheme) mode")
+            }
+        }
+    #endif
 }
 
 extension ReaderViewRenderingTests {

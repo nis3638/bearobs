@@ -54,6 +54,22 @@ enum WorkspaceDestination: Hashable, Identifiable {
         guard case .tag(let normalizedName) = self else { return nil }
         return normalizedName
     }
+
+    var restorationID: String { id }
+
+    static func restore(from id: String?) -> WorkspaceDestination {
+        guard let id else { return .section(.notes) }
+        if id.hasPrefix("section:"),
+            let section = WorkspaceSection(rawValue: String(id.dropFirst("section:".count)))
+        {
+            return .section(section)
+        }
+        if id.hasPrefix("tag:") {
+            let tag = String(id.dropFirst("tag:".count))
+            if !tag.isEmpty { return .tag(tag) }
+        }
+        return .section(.notes)
+    }
 }
 
 enum WorkspaceSelectionPolicy {
@@ -137,9 +153,20 @@ enum WorkspaceLayout {
 
 struct WorkspaceSidebar: View {
     let tagsModel: TagsFeatureModel
+    let availabilityModel: LibraryFeatureModel?
     @Binding var destination: WorkspaceDestination?
     @State private var isTagsExpanded = true
     @State private var collapsedTagPaths: Set<String> = []
+
+    init(
+        tagsModel: TagsFeatureModel,
+        availabilityModel: LibraryFeatureModel? = nil,
+        destination: Binding<WorkspaceDestination?>
+    ) {
+        self.tagsModel = tagsModel
+        self.availabilityModel = availabilityModel
+        _destination = destination
+    }
 
     var body: some View {
         List(selection: $destination) {
@@ -164,7 +191,8 @@ struct WorkspaceSidebar: View {
         .navigationTitle("BearObs")
         .accessibilityIdentifier("workspace-sidebar")
         .task { await tagsModel.loadIfNeeded() }
-        .refreshable { await tagsModel.load() }
+        .task { await availabilityModel?.load() }
+        .refreshable { await refreshTags() }
     }
 
     @ViewBuilder
@@ -174,10 +202,15 @@ struct WorkspaceSidebar: View {
             ProgressView("正在加载标签")
                 .accessibilityIdentifier("workspace-tags-loading")
         case .empty:
-            Text("还没有标签")
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("workspace-tags-empty")
+            if availability.unavailableCount > 0 {
+                LibraryUnavailableSourcesRow(count: availability.unavailableCount)
+            } else {
+                Text("还没有标签")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("workspace-tags-empty")
+            }
         case .content(let tags):
+            availabilityWarning
             WorkspaceTagTree(
                 nodes: TagNavigationTree.build(from: tags),
                 destination: $destination,
@@ -194,21 +227,37 @@ struct WorkspaceSidebar: View {
                 }
                 .accessibilityIdentifier("workspace-tags-error")
             } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label {
-                        Text("标签更新失败，正在显示上次结果")
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    }
-                    WorkspaceTagTree(
-                        nodes: TagNavigationTree.build(from: tags),
-                        destination: $destination,
-                        collapsedPaths: $collapsedTagPaths
-                    )
+                availabilityWarning
+                Label {
+                    Text(TagListPresentation.staleWarning)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
                 }
+                WorkspaceTagTree(
+                    nodes: TagNavigationTree.build(from: tags),
+                    destination: $destination,
+                    collapsedPaths: $collapsedTagPaths
+                )
             }
         }
+    }
+
+    @ViewBuilder
+    private var availabilityWarning: some View {
+        if availability.unavailableCount > 0 {
+            LibraryUnavailableSourcesRow(count: availability.unavailableCount)
+        }
+    }
+
+    private var availability: IndexAvailabilityState {
+        availabilityModel?.availability
+            ?? IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
+    }
+
+    private func refreshTags() async {
+        await availabilityModel?.refresh()
+        await tagsModel.load()
     }
 }
 
@@ -259,6 +308,7 @@ struct WorkspaceTagTreeNode: View {
     let depth: Int
     @Binding var destination: WorkspaceDestination?
     @Binding var collapsedPaths: Set<String>
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var isCollapsed: Bool {
         collapsedPaths.contains(node.normalizedPath)
@@ -270,6 +320,11 @@ struct WorkspaceTagTreeNode: View {
 
     private var target: WorkspaceDestination? {
         node.summary.map { .tag($0.normalizedName) }
+    }
+
+    private var isSelected: Bool {
+        guard let target else { return false }
+        return destination == target
     }
 
     var body: some View {
@@ -317,26 +372,22 @@ struct WorkspaceTagTreeNode: View {
             Button {
                 destination = target
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "number")
-                        .accessibilityHidden(true)
-                    Text(node.displayName)
-                    Spacer(minLength: 4)
-                    Text("\(summary.noteCount)")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                tagLabel(summary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .tag(target)
             .accessibilityIdentifier("workspace-tag-\(summary.normalizedName)")
-            .accessibilityLabel(node.displayPath)
-            .accessibilityValue(
-                "\(summary.noteCount) 篇笔记，\(destination == target ? "已选中" : "未选中")"
+            .accessibilityLabel(
+                TagListPresentation.accessibilityLabel(
+                    name: node.displayPath,
+                    noteCount: summary.noteCount
+                )
             )
-            .accessibilityAddTraits(destination == target ? .isSelected : [])
+            .accessibilityValue(TagListPresentation.accessibilityValue(isSelected: isSelected))
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .listRowBackground(
-                destination == target
+                isSelected
                     ? Color.accentColor.opacity(0.18)
                     : Color.clear
             )
@@ -344,6 +395,48 @@ struct WorkspaceTagTreeNode: View {
             Label(node.displayName, systemImage: "folder")
                 .accessibilityLabel("\(node.displayPath)，分组")
                 .accessibilityValue(isExpanded ? "已展开" : "已收起")
+        }
+    }
+
+    @ViewBuilder
+    private func tagLabel(_ summary: IndexedTagSummary) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            HStack(alignment: .top, spacing: 6) {
+                tagIcon
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(node.displayName)
+                        .lineLimit(nil)
+                    Text("\(summary.noteCount) 篇")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 4)
+                selectionIndicator
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                tagIcon
+                Text(node.displayName)
+                Spacer(minLength: 4)
+                Text("\(summary.noteCount) 篇")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                selectionIndicator
+            }
+        }
+    }
+
+    private var tagIcon: some View {
+        Image(systemName: "number")
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var selectionIndicator: some View {
+        if let symbolName = TagListPresentation.selectionIndicatorName(isSelected: isSelected) {
+            Image(systemName: symbolName)
+                .accessibilityHidden(true)
         }
     }
 
@@ -379,18 +472,30 @@ struct WorkspaceLibraryColumn: View {
             WorkspaceNoteList(
                 notes: notes,
                 selection: $selection,
+                availability: model.availability,
                 status: .indexing,
                 retry: { Task { await model.refresh() } }
             )
         case .content(let notes):
-            WorkspaceNoteList(notes: notes, selection: $selection)
-        case .empty:
-            ContentUnavailableView(
-                "还没有笔记",
-                systemImage: "doc.text",
-                description: Text("这个 Vault 中还没有可读取的 Markdown 笔记。")
+            WorkspaceNoteList(
+                notes: notes,
+                selection: $selection,
+                availability: model.availability
             )
-            .accessibilityIdentifier("workspace-note-list-empty")
+        case .empty:
+            if model.availability.unavailableCount > 0 {
+                LibraryUnavailableSourcesView(
+                    count: model.availability.unavailableCount,
+                    retry: { Task { await model.refresh() } }
+                )
+            } else {
+                ContentUnavailableView(
+                    "还没有笔记",
+                    systemImage: "doc.text",
+                    description: Text("这个 Vault 中还没有可读取的 Markdown 笔记。")
+                )
+                .accessibilityIdentifier("workspace-note-list-empty")
+            }
         case .failure(let failure, let notes):
             if notes.isEmpty {
                 WorkspaceFailureView(
@@ -402,6 +507,7 @@ struct WorkspaceLibraryColumn: View {
                 WorkspaceNoteList(
                     notes: notes,
                     selection: $selection,
+                    availability: model.availability,
                     status: .failure(
                         title: failure == .loadFailed ? "无法加载笔记" : "索引更新失败",
                         message: "现有笔记仍可阅读。请稍后重试更新。"
@@ -415,13 +521,25 @@ struct WorkspaceLibraryColumn: View {
 
 struct WorkspaceRecentColumn: View {
     let model: SearchFeatureModel
+    let availabilityModel: LibraryFeatureModel?
     @Binding var selection: VaultPath?
+
+    init(
+        model: SearchFeatureModel,
+        availabilityModel: LibraryFeatureModel? = nil,
+        selection: Binding<VaultPath?>
+    ) {
+        self.model = model
+        self.availabilityModel = availabilityModel
+        _selection = selection
+    }
 
     var body: some View {
         content
             .navigationTitle("最近")
             .task { await model.search("") }
-            .refreshable { await model.search("") }
+            .task { await availabilityModel?.load() }
+            .refreshable { await refresh() }
             .accessibilityIdentifier("workspace-recent-list")
     }
 
@@ -431,14 +549,25 @@ struct WorkspaceRecentColumn: View {
         case .loading:
             ProgressView("正在加载最近笔记")
         case .content(let hits):
-            WorkspaceSearchResultList(hits: hits, selection: $selection)
-        case .empty:
-            ContentUnavailableView(
-                "还没有最近笔记",
-                systemImage: "clock",
-                description: Text("最近修改的笔记会出现在这里。")
+            WorkspaceSearchResultList(
+                hits: hits,
+                selection: $selection,
+                availability: availability
             )
-            .accessibilityIdentifier("workspace-recent-empty")
+        case .empty:
+            if availability.unavailableCount > 0 {
+                LibraryUnavailableSourcesView(
+                    count: availability.unavailableCount,
+                    retry: { Task { await refresh() } }
+                )
+            } else {
+                ContentUnavailableView(
+                    "还没有最近笔记",
+                    systemImage: "clock",
+                    description: Text("最近修改的笔记会出现在这里。")
+                )
+                .accessibilityIdentifier("workspace-recent-empty")
+            }
         case .failure:
             WorkspaceFailureView(
                 title: "无法加载最近笔记",
@@ -447,17 +576,39 @@ struct WorkspaceRecentColumn: View {
             )
         }
     }
+
+    private var availability: IndexAvailabilityState {
+        availabilityModel?.availability
+            ?? IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
+    }
+
+    private func refresh() async {
+        await availabilityModel?.refresh()
+        await model.search("")
+    }
 }
 
 struct WorkspaceFavoritesColumn: View {
     let model: FavoritesFeatureModel
+    let availabilityModel: LibraryFeatureModel?
     @Binding var selection: VaultPath?
+
+    init(
+        model: FavoritesFeatureModel,
+        availabilityModel: LibraryFeatureModel? = nil,
+        selection: Binding<VaultPath?>
+    ) {
+        self.model = model
+        self.availabilityModel = availabilityModel
+        _selection = selection
+    }
 
     var body: some View {
         content
             .navigationTitle("收藏")
             .task { await model.loadIfNeeded() }
-            .refreshable { await model.reload() }
+            .task { await availabilityModel?.load() }
+            .refreshable { await refresh() }
             .accessibilityIdentifier("workspace-favorites-list")
     }
 
@@ -467,14 +618,25 @@ struct WorkspaceFavoritesColumn: View {
         case .loading:
             ProgressView("正在加载收藏")
         case .content(let notes):
-            WorkspaceNoteList(notes: notes, selection: $selection)
-        case .empty:
-            ContentUnavailableView(
-                "还没有收藏",
-                systemImage: "star",
-                description: Text("在阅读栏中点击星标，可将笔记固定到这里。")
+            WorkspaceNoteList(
+                notes: notes,
+                selection: $selection,
+                availability: availability
             )
-            .accessibilityIdentifier("workspace-favorites-empty")
+        case .empty:
+            if availability.unavailableCount > 0 {
+                LibraryUnavailableSourcesView(
+                    count: availability.unavailableCount,
+                    retry: { Task { await refresh() } }
+                )
+            } else {
+                ContentUnavailableView(
+                    "还没有收藏",
+                    systemImage: "star",
+                    description: Text("在阅读栏中点击星标，可将笔记固定到这里。")
+                )
+                .accessibilityIdentifier("workspace-favorites-empty")
+            }
         case .failure(let failure, let notes):
             if notes.isEmpty {
                 WorkspaceFailureView(
@@ -486,6 +648,7 @@ struct WorkspaceFavoritesColumn: View {
                 WorkspaceNoteList(
                     notes: notes,
                     selection: $selection,
+                    availability: availability,
                     status: .failure(
                         title: failure == .loadFailed ? "无法加载收藏" : "收藏更新失败",
                         message: "现有收藏仍可打开，请稍后重试更新。"
@@ -495,18 +658,41 @@ struct WorkspaceFavoritesColumn: View {
             }
         }
     }
+
+    private var availability: IndexAvailabilityState {
+        availabilityModel?.availability
+            ?? IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
+    }
+
+    private func refresh() async {
+        await availabilityModel?.refresh()
+        await model.reload()
+    }
 }
 
 struct WorkspaceSearchColumn: View {
     let model: SearchFeatureModel
+    let availabilityModel: LibraryFeatureModel?
     @Binding var selection: VaultPath?
     @State private var query = ""
+
+    init(
+        model: SearchFeatureModel,
+        availabilityModel: LibraryFeatureModel? = nil,
+        selection: Binding<VaultPath?>
+    ) {
+        self.model = model
+        self.availabilityModel = availabilityModel
+        _selection = selection
+    }
 
     var body: some View {
         content
             .navigationTitle("搜索")
             .searchable(text: $query, prompt: "标题、正文或标签")
             .task(id: query) { await model.search(query) }
+            .task { await availabilityModel?.load() }
+            .refreshable { await refresh() }
             .accessibilityIdentifier("workspace-search-list")
     }
 
@@ -516,9 +702,18 @@ struct WorkspaceSearchColumn: View {
         case .loading:
             ProgressView(query.isEmpty ? "正在加载笔记" : "正在搜索")
         case .content(let hits):
-            WorkspaceSearchResultList(hits: hits, selection: $selection)
+            WorkspaceSearchResultList(
+                hits: hits,
+                selection: $selection,
+                availability: availability
+            )
         case .empty:
-            if query.isEmpty {
+            if availability.unavailableCount > 0 {
+                LibraryUnavailableSourcesView(
+                    count: availability.unavailableCount,
+                    retry: { Task { await refresh() } }
+                )
+            } else if query.isEmpty {
                 ContentUnavailableView(
                     "还没有笔记",
                     systemImage: "doc.text",
@@ -537,24 +732,52 @@ struct WorkspaceSearchColumn: View {
             )
         }
     }
+
+    private var availability: IndexAvailabilityState {
+        availabilityModel?.availability
+            ?? IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
+    }
+
+    private func refresh() async {
+        await availabilityModel?.refresh()
+        await model.search(query)
+    }
 }
 
 struct WorkspaceTaggedNotesColumn: View {
     let model: TagsFeatureModel
+    let availabilityModel: LibraryFeatureModel?
     let normalizedName: String
     @Binding var selection: VaultPath?
+
+    init(
+        model: TagsFeatureModel,
+        availabilityModel: LibraryFeatureModel? = nil,
+        normalizedName: String,
+        selection: Binding<VaultPath?>
+    ) {
+        self.model = model
+        self.availabilityModel = availabilityModel
+        self.normalizedName = normalizedName
+        _selection = selection
+    }
 
     var body: some View {
         content
             .navigationTitle(displayName)
-            .task(id: normalizedName) { await loadSelectedTag() }
-            .refreshable { await loadSelectedTag() }
+            .task(id: matchedTag?.id) { await loadSelectedTag() }
+            .task { await availabilityModel?.load() }
+            .refreshable { await refresh() }
             .accessibilityIdentifier("workspace-tag-note-list")
     }
 
     private var displayName: String {
         model.state.visibleTags.first { $0.normalizedName == normalizedName }?.displayName
             ?? normalizedName
+    }
+
+    private var matchedTag: IndexedTagSummary? {
+        model.state.visibleTags.first { $0.normalizedName == normalizedName }
     }
 
     @ViewBuilder
@@ -566,14 +789,25 @@ struct WorkspaceTaggedNotesColumn: View {
             case .loading:
                 ProgressView("正在加载笔记")
             case .content(let notes):
-                WorkspaceNoteList(notes: notes, selection: $selection)
-            case .empty:
-                ContentUnavailableView(
-                    "没有匹配的笔记",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text("没有笔记使用此完整标签。")
+                WorkspaceNoteList(
+                    notes: notes,
+                    selection: $selection,
+                    availability: availability
                 )
-                .accessibilityIdentifier("workspace-tag-note-list-empty")
+            case .empty:
+                if availability.unavailableCount > 0 {
+                    LibraryUnavailableSourcesView(
+                        count: availability.unavailableCount,
+                        retry: { Task { await refresh() } }
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "没有匹配的笔记",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("没有笔记使用此完整标签。")
+                    )
+                    .accessibilityIdentifier("workspace-tag-note-list-empty")
+                }
             case .failure:
                 WorkspaceFailureView(
                     title: "无法加载标签笔记",
@@ -582,6 +816,11 @@ struct WorkspaceTaggedNotesColumn: View {
                 )
             }
         }
+    }
+
+    private var availability: IndexAvailabilityState {
+        availabilityModel?.availability
+            ?? IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
     }
 
     private func loadSelectedTag() async {
@@ -594,17 +833,34 @@ struct WorkspaceTaggedNotesColumn: View {
         }
         await model.select(tag: tag)
     }
+
+    private func refresh() async {
+        await availabilityModel?.refresh()
+        await model.load()
+        await loadSelectedTag()
+    }
 }
 
 struct WorkspaceSearchResultList: View {
     let hits: [IndexSearchHit]
     @Binding var selection: VaultPath?
+    var availability = IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(hits) { hit in
-                SearchResultRow(hit: hit)
+            if availability.unavailableCount > 0 {
+                Section {
+                    LibraryUnavailableSourcesRow(count: availability.unavailableCount)
+                }
+            }
+            Section {
+                ForEach(hits) { hit in
+                    SearchResultRow(
+                        hit: hit,
+                        isStale: availability.staleNotePaths.contains(hit.path)
+                    )
                     .tag(hit.path)
+                }
             }
         }
         .listStyle(.inset)
@@ -619,11 +875,17 @@ enum WorkspaceNoteListStatus: Equatable {
 struct WorkspaceNoteList: View {
     let notes: [IndexedNoteSummary]
     @Binding var selection: VaultPath?
+    var availability = IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
     var status: WorkspaceNoteListStatus? = nil
     var retry: (() -> Void)? = nil
 
     var body: some View {
         List(selection: $selection) {
+            if availability.unavailableCount > 0 {
+                Section {
+                    LibraryUnavailableSourcesRow(count: availability.unavailableCount)
+                }
+            }
             if let status {
                 Section {
                     WorkspaceNoteListStatusRow(status: status, retry: retry)
@@ -631,8 +893,11 @@ struct WorkspaceNoteList: View {
             }
             Section("笔记") {
                 ForEach(notes) { note in
-                    LibraryNoteRow(note: note)
-                        .tag(note.path)
+                    LibraryNoteRow(
+                        note: note,
+                        isStale: availability.staleNotePaths.contains(note.path)
+                    )
+                    .tag(note.path)
                 }
             }
         }
@@ -720,16 +985,33 @@ struct VaultSelectionPrompt: View {
 
 struct VaultWorkspaceView: View {
     let environment: AppEnvironment
-    @State private var destination: WorkspaceDestination? = .section(.notes)
+    private let destinationDidChange: (WorkspaceDestination?) -> Void
+    private let selectedPathDidChange: (VaultPath?) -> Void
+    @State private var destination: WorkspaceDestination?
     @State private var selectedPath: VaultPath?
     @State private var pendingPath: VaultPath?
     @State private var hasUnsavedEditorChanges = false
     @State private var isDiscardConfirmationPresented = false
 
+    init(
+        environment: AppEnvironment,
+        initialDestination: WorkspaceDestination? = .section(.notes),
+        initialSelectedPath: VaultPath? = nil,
+        destinationDidChange: @escaping (WorkspaceDestination?) -> Void = { _ in },
+        selectedPathDidChange: @escaping (VaultPath?) -> Void = { _ in }
+    ) {
+        self.environment = environment
+        self.destinationDidChange = destinationDidChange
+        self.selectedPathDidChange = selectedPathDidChange
+        _destination = State(initialValue: initialDestination)
+        _selectedPath = State(initialValue: initialSelectedPath)
+    }
+
     var body: some View {
         NavigationSplitView {
             WorkspaceSidebar(
                 tagsModel: environment.tagsModel,
+                availabilityModel: environment.libraryModel,
                 destination: $destination
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
@@ -763,8 +1045,12 @@ struct VaultWorkspaceView: View {
             )
         }
         .onChange(of: destination) { _, nextDestination in
+            destinationDidChange(nextDestination)
             guard case .section = nextDestination else { return }
             environment.tagsModel.clearTagSelection()
+        }
+        .onChange(of: selectedPath) { _, path in
+            selectedPathDidChange(path)
         }
         .onChange(of: environment.tagsModel.state) { _, _ in
             reconcileTagDestination()
@@ -788,21 +1074,25 @@ struct VaultWorkspaceView: View {
         case .section(.recent):
             WorkspaceRecentColumn(
                 model: environment.recentModel,
+                availabilityModel: environment.libraryModel,
                 selection: selectionBinding
             )
         case .section(.favorites):
             WorkspaceFavoritesColumn(
                 model: environment.favoritesModel,
+                availabilityModel: environment.libraryModel,
                 selection: selectionBinding
             )
         case .section(.search):
             WorkspaceSearchColumn(
                 model: environment.searchModel,
+                availabilityModel: environment.libraryModel,
                 selection: selectionBinding
             )
         case .tag(let normalizedName):
             WorkspaceTaggedNotesColumn(
                 model: environment.tagsModel,
+                availabilityModel: environment.libraryModel,
                 normalizedName: normalizedName,
                 selection: selectionBinding
             )

@@ -73,6 +73,124 @@ final class ReaderFeatureModelTests: XCTestCase {
         )
     }
 
+    func testLocalReaderFallsBackToExactIndexedSnapshotAndMarksItAsCached() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let root = directory.appendingPathComponent("Vault", isDirectory: true)
+        let targetFolder = root.appendingPathComponent("Folder", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: targetFolder,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = try SQLiteIndexRepository(
+            path: directory.appendingPathComponent("index.sqlite").path
+        )
+        let snapshots = try IndexedSourceSnapshotStore(
+            directory: directory.appendingPathComponent("ReaderSnapshots", isDirectory: true)
+        )
+        let sourcePath = try VaultPath(decodedRelativePath: "Source.md")
+        let targetPath = try VaultPath(decodedRelativePath: "Folder/Target.md")
+        let sourceData =
+            Data([0xEF, 0xBB, 0xBF])
+            + Data(
+                "---\r\ntitle: Cached title\r\n---\r\nOpen [[Folder/Target|target]].\r\n".utf8
+            )
+        try sourceData.write(to: root.appendingPathComponent("Source.md"))
+        try Data("# Target".utf8).write(
+            to: targetFolder.appendingPathComponent("Target.md")
+        )
+        let scanner = try IncrementalIndexScanner(
+            root: root,
+            repository: repository,
+            snapshots: snapshots
+        )
+        _ = try await scanner.scan()
+        try FileManager.default.removeItem(at: root.appendingPathComponent("Source.md"))
+        let source = ReaderDataSource.localVault(
+            try LocalVaultStore(root: root),
+            wikiLinks: .index(repository),
+            indexedFallback: .init(repository: repository, snapshots: snapshots)
+        )
+        let model = ReaderFeatureModel(path: sourcePath, source: source)
+
+        await model.load()
+
+        guard case .content(let document) = model.state else {
+            return XCTFail("Expected the indexed snapshot to remain readable")
+        }
+        XCTAssertEqual(document.title, "Cached title")
+        XCTAssertEqual(model.contentFreshness, .cached)
+        XCTAssertEqual(
+            document.blocks.last,
+            .paragraph([
+                .text("Open "),
+                .wikiLink(
+                    label: "target",
+                    target: "Folder/Target",
+                    resolution: .resolved(targetPath)
+                ),
+                .text("."),
+            ])
+        )
+    }
+
+    func testReaderReturnsToLiveContentAfterTheSourceRecovers() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let root = directory.appendingPathComponent("Vault", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let noteURL = root.appendingPathComponent("Recovered.md")
+        try Data("# Cached".utf8).write(to: noteURL)
+        let repository = try SQLiteIndexRepository(
+            path: directory.appendingPathComponent("index.sqlite").path
+        )
+        let snapshots = try IndexedSourceSnapshotStore(
+            directory: directory.appendingPathComponent("ReaderSnapshots", isDirectory: true)
+        )
+        let scanner = try IncrementalIndexScanner(
+            root: root,
+            repository: repository,
+            snapshots: snapshots
+        )
+        _ = try await scanner.scan()
+        try FileManager.default.removeItem(at: noteURL)
+        let path = try VaultPath(decodedRelativePath: "Recovered.md")
+        let source = ReaderDataSource.localVault(
+            try LocalVaultStore(root: root),
+            indexedFallback: .init(repository: repository, snapshots: snapshots)
+        )
+        let model = ReaderFeatureModel(path: path, source: source)
+
+        await model.load()
+        XCTAssertEqual(model.contentFreshness, .cached)
+
+        try Data("# Live\n\nRecovered body.".utf8).write(to: noteURL)
+        await model.load()
+
+        guard case .content(let document) = model.state else {
+            return XCTFail("Expected the recovered live document")
+        }
+        XCTAssertEqual(document.title, "Live")
+        XCTAssertEqual(model.contentFreshness, .current)
+    }
+
+    func testCachedDocumentRemainsVisibleWhileRecoveryRetryFails() async throws {
+        let path = try VaultPath(decodedRelativePath: "Cached.md")
+        let cached = MarkdownRenderDocument(
+            blocks: [.paragraph([.text("Keep visible")])]
+        )
+        let source = FailingCachedReaderSource(document: cached)
+        let model = ReaderFeatureModel(path: path, source: await source.dataSource)
+
+        await model.load()
+        await model.load()
+
+        XCTAssertEqual(model.state, .content(cached))
+        XCTAssertEqual(model.contentFreshness, .cached)
+    }
+
     func testLoadPublishesContentAndFixedFailure() async throws {
         let path = try VaultPath(decodedRelativePath: "Note.md")
         let document = MarkdownRenderDocument(blocks: [.paragraph([.text("Body")])])
@@ -797,6 +915,7 @@ extension ReaderFeatureModelTests {
     private func makeHash(_ digit: Character) throws -> ContentHash {
         try ContentHash(hex: String(repeating: digit, count: 64))
     }
+
 }
 
 private struct FavoriteWrite: Equatable, Sendable {
@@ -871,6 +990,25 @@ private actor SuspendedReaderSource {
         startedContinuation = nil
         await withCheckedContinuation { firstContinuation = $0 }
         return old
+    }
+}
+
+private actor FailingCachedReaderSource {
+    private let document: MarkdownRenderDocument
+    private var loadCount = 0
+
+    init(document: MarkdownRenderDocument) {
+        self.document = document
+    }
+
+    var dataSource: ReaderDataSource {
+        ReaderDataSource.content { [self] _ in try await load() }
+    }
+
+    private func load() throws -> ReaderContent {
+        loadCount += 1
+        guard loadCount == 1 else { throw ReaderDataSourceError.unavailable }
+        return ReaderContent(document: document, freshness: .cached)
     }
 }
 

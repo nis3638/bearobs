@@ -40,6 +40,22 @@ final class LibraryFeatureModelTests: XCTestCase {
         XCTAssertEqual(model.state, .failure(.loadFailed, visibleNotes: []))
     }
 
+    func testInitialLoadPublishesIndexingStateUntilFirstScanCompletes() async throws {
+        let note = try makeNote()
+        let source = SuspendedLibrarySource(
+            first: [note], second: [note], requiresInitialIndex: true)
+        let model = LibraryFeatureModel(source: await source.dataSource)
+
+        let load = Task { await model.load() }
+        await source.waitUntilFirstLoadStarts()
+
+        XCTAssertEqual(model.state, .indexing([]))
+
+        await source.resumeFirstLoad()
+        await load.value
+        XCTAssertEqual(model.state, .content([note]))
+    }
+
     func testRefreshReloadsContentAndReportsFixedFailureWithoutDroppingVisibleNotes() async throws {
         let original = try makeNote(title: "Original")
         let replacement = try makeNote(title: "Replacement")
@@ -108,6 +124,61 @@ final class LibraryFeatureModelTests: XCTestCase {
         await cancelledLoad.load()
         XCTAssertEqual(cancelledLoad.state, .loading)
     }
+
+    func testLoadPublishesPersistedUnavailableStateWithoutInventingAnEmptyVault() async throws {
+        let stalePath = try VaultPath(decodedRelativePath: "Offline.md")
+        let staleNote = try makeNote(path: stalePath)
+        let model = LibraryFeatureModel(
+            source: LibraryDataSource(
+                load: { [staleNote] },
+                refresh: {},
+                availability: {
+                    IndexAvailabilityState(
+                        unavailableCount: 2,
+                        staleNotePaths: [stalePath]
+                    )
+                }
+            )
+        )
+
+        await model.load()
+
+        XCTAssertEqual(model.state, .content([staleNote]))
+        XCTAssertEqual(model.availability.unavailableCount, 2)
+        XCTAssertEqual(model.availability.staleNotePaths, [stalePath])
+        XCTAssertEqual(model.availability.diagnostic, .sourceTemporarilyUnavailable)
+    }
+
+    func testRefreshClearsRecoveredUnavailableState() async throws {
+        let note = try makeNote()
+        let source = RecoveringAvailabilitySource(note: note)
+        let model = LibraryFeatureModel(source: await source.dataSource)
+
+        await model.load()
+        XCTAssertEqual(model.availability.unavailableCount, 1)
+
+        await model.refresh()
+
+        XCTAssertEqual(model.state, .content([note]))
+        XCTAssertEqual(model.availability.unavailableCount, 0)
+        XCTAssertTrue(model.availability.staleNotePaths.isEmpty)
+    }
+
+    func testAvailabilityFailureDoesNotHideSuccessfullyLoadedNotes() async throws {
+        let note = try makeNote()
+        let model = LibraryFeatureModel(
+            source: LibraryDataSource(
+                load: { [note] },
+                refresh: {},
+                availability: { throw PrivateFailure.sensitive("diagnostic database") }
+            )
+        )
+
+        await model.load()
+
+        XCTAssertEqual(model.state, .content([note]))
+        XCTAssertEqual(model.availability.unavailableCount, 0)
+    }
 }
 
 extension LibraryFeatureModelTests {
@@ -115,14 +186,48 @@ extension LibraryFeatureModelTests {
         case sensitive(String)
     }
 
-    private func makeNote(title: String = "Note") throws -> IndexedNoteSummary {
+    private func makeNote(
+        title: String = "Note",
+        path: VaultPath? = nil
+    ) throws -> IndexedNoteSummary {
         IndexedNoteSummary(
-            path: try VaultPath(decodedRelativePath: "note.md"),
+            path: try path ?? VaultPath(decodedRelativePath: "note.md"),
             title: title,
             preview: "Preview",
             modifiedAt: Date(timeIntervalSince1970: 10),
             parseStatus: .complete
         )
+    }
+}
+
+private actor RecoveringAvailabilitySource {
+    private let note: IndexedNoteSummary
+    private var refreshCount = 0
+
+    init(note: IndexedNoteSummary) {
+        self.note = note
+    }
+
+    var dataSource: LibraryDataSource {
+        LibraryDataSource(
+            load: { [self] in [note] },
+            refresh: { [self] in await recordRefresh() },
+            availability: { [self] in await availability() }
+        )
+    }
+
+    private func recordRefresh() {
+        refreshCount += 1
+    }
+
+    private func availability() -> IndexAvailabilityState {
+        if refreshCount == 0 {
+            return IndexAvailabilityState(
+                unavailableCount: 1,
+                staleNotePaths: [note.path]
+            )
+        }
+        return IndexAvailabilityState(unavailableCount: 0, staleNotePaths: [])
     }
 }
 
@@ -163,14 +268,24 @@ private actor SuspendedLibrarySource {
     private var firstContinuation: CheckedContinuation<Void, Never>?
     private var startedContinuation: CheckedContinuation<Void, Never>?
     private var firstStarted = false
+    private let requiresInitialIndex: Bool
 
-    init(first: [IndexedNoteSummary], second: [IndexedNoteSummary]) {
+    init(
+        first: [IndexedNoteSummary],
+        second: [IndexedNoteSummary],
+        requiresInitialIndex: Bool = false
+    ) {
         self.first = first
         self.second = second
+        self.requiresInitialIndex = requiresInitialIndex
     }
 
     var dataSource: LibraryDataSource {
-        LibraryDataSource(load: { [self] in await load() }, refresh: {})
+        LibraryDataSource(
+            load: { [self] in await load() },
+            refresh: {},
+            requiresInitialIndex: { [self] in requiresInitialIndex }
+        )
     }
 
     func waitUntilFirstLoadStarts() async {

@@ -167,6 +167,114 @@ final class BearObsIOSUITests: XCTestCase {
         )
     }
 
+    /// AC-REQ-004-02/05：搜索结果可进入阅读，收藏跨重启持久化；整个流程
+    /// 只能写 App 自己的用户状态，Vault 内所有 Markdown 字节必须保持不变。
+    func testSearchFavoriteAndRelaunchKeepVaultBytesUnchanged() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "Needle.md",
+            content: "# 可搜索笔记\n\nunique-search-token\n"
+        )
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        try writeNote(
+            named: "Other.md",
+            content: "# 其它笔记\n\n没有目标词。\n",
+            in: temporaryRoot
+        )
+        let vault = temporaryRoot.appendingPathComponent("Vault", isDirectory: true)
+        let before = try markdownBytes(in: vault)
+
+        application.launch()
+        let searchTab = application.tabBars.buttons["搜索"]
+        XCTAssertTrue(searchTab.waitForExistence(timeout: 10))
+        searchTab.tap()
+
+        let search = application.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("unique-search-token")
+
+        let result = noteRow(titled: "可搜索笔记", in: application)
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        XCTAssertFalse(noteRow(titled: "其它笔记", in: application).exists)
+        result.tap()
+
+        let favorite = application.buttons.matching(
+            identifier: "reader-favorite-button"
+        ).firstMatch
+        XCTAssertTrue(favorite.waitForExistence(timeout: 10))
+        XCTAssertTrue(favorite.isEnabled)
+        favorite.tap()
+        let favoriteSaved = NSPredicate(
+            format: "label == %@ AND isEnabled == true",
+            "取消收藏"
+        )
+        expectation(for: favoriteSaved, evaluatedWith: favorite)
+        waitForExpectations(timeout: 10)
+
+        application.terminate()
+        application.launch()
+        let favoritesTab = application.tabBars.buttons["收藏"]
+        XCTAssertTrue(favoritesTab.waitForExistence(timeout: 10))
+        favoritesTab.tap()
+        XCTAssertTrue(noteRow(titled: "可搜索笔记", in: application).waitForExistence(timeout: 10))
+
+        XCTAssertEqual(try markdownBytes(in: vault), before)
+    }
+
+    /// AC-REQ-004-03：已解析 Wiki Link 在紧凑导航栈内推入目标 Reader。
+    func testResolvedWikiLinkNavigatesToTheTargetReader() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "Source.md",
+            content: "# 来源\n\n打开 [[Target|目标笔记]]。\n"
+        )
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        try writeNote(
+            named: "Target.md",
+            content: "# Wiki 目标\n\n到达目标正文。\n",
+            in: temporaryRoot
+        )
+
+        application.launch()
+        let source = noteRow(titled: "来源", in: application)
+        XCTAssertTrue(source.waitForExistence(timeout: 10))
+        source.tap()
+
+        let link = application.descendants(matching: .any)["reader-inline-link"].firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        XCTAssertEqual(link.label, "链接：目标笔记")
+        link.tap()
+
+        XCTAssertTrue(application.navigationBars["Wiki 目标"].waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            application.descendants(matching: .any)["reader-content"]
+                .waitForExistence(timeout: 10)
+        )
+    }
+
+    /// AC-REQ-004-07：最大辅助字号和深色模式下核心入口仍可访问。
+    func testCompactWorkspaceRemainsOperableAtLargestTypeInDarkMode() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "Accessible.md",
+            content: "# 可访问阅读\n\n正文。\n"
+        )
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        application.launchArguments += [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityXXXL",
+            "-AppleInterfaceStyle",
+            "Dark",
+        ]
+
+        application.launch()
+
+        XCTAssertTrue(
+            application.descendants(matching: .any)["workspace-note-list"]
+                .waitForExistence(timeout: 10)
+        )
+        XCTAssertTrue(application.tabBars.buttons["标签"].isHittable)
+        XCTAssertTrue(application.descendants(matching: .any)["open-vault"].isHittable)
+    }
+
     // MARK: - Seeded-vault helpers
 
     /// 与 AppDirectories.autoOpenVaultEnvironmentKey 对应（UI 测试目标不链接
@@ -206,6 +314,28 @@ final class BearObsIOSUITests: XCTestCase {
                 )
             )
             .firstMatch
+    }
+
+    private func markdownBytes(in vault: URL) throws -> [String: Data] {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: vault,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        var bytes: [String: Data] = [:]
+        for case let file as URL in enumerator {
+            let values = try file.resourceValues(forKeys: [.isRegularFileKey])
+            guard values.isRegularFile == true, file.pathExtension.lowercased() == "md" else {
+                continue
+            }
+            let relativePath = String(file.path.dropFirst(vault.path.count + 1))
+            bytes[relativePath] = try Data(contentsOf: file)
+        }
+        return bytes
     }
 
     /// 每条测试使用独立临时根目录承载全部本地状态。

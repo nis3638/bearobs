@@ -188,6 +188,31 @@ final class TagsFeatureModelTests: XCTestCase {
         XCTAssertEqual(model.state, .failure(visibleTags: [tag]))
     }
 
+    func testTagListPresentationKeepsFailureAndSelectionSemanticsExplicit() {
+        XCTAssertEqual(
+            TagListPresentation.staleWarning,
+            "标签更新失败，正在显示上次结果"
+        )
+        XCTAssertEqual(
+            TagListPresentation.accessibilityLabel(
+                name: "Project/Mobile",
+                noteCount: 12_345
+            ),
+            "Project/Mobile，12345 篇笔记"
+        )
+        XCTAssertEqual(
+            TagListPresentation.accessibilityValue(isSelected: true),
+            "已选中"
+        )
+        XCTAssertEqual(
+            TagListPresentation.selectionIndicatorName(isSelected: true),
+            "checkmark"
+        )
+        XCTAssertNil(
+            TagListPresentation.selectionIndicatorName(isSelected: false)
+        )
+    }
+
     func testLatestSelectedTagNotesWinWhenAnOlderRequestFinishesLate() async throws {
         let firstTag = makeTag(displayName: "First")
         let secondTag = makeTag(displayName: "Second")

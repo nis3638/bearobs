@@ -73,10 +73,12 @@ public struct SearchView: View {
 
 public struct SearchResultRow: View {
     let hit: IndexSearchHit
+    let isStale: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    public init(hit: IndexSearchHit) {
+    public init(hit: IndexSearchHit, isStale: Bool = false) {
         self.hit = hit
+        self.isStale = isStale
     }
 
     public var body: some View {
@@ -101,6 +103,11 @@ public struct SearchResultRow: View {
                         .foregroundStyle(.orange)
                 }
                 .font(.caption2.weight(.medium))
+            }
+            if isStale {
+                Label("源文件暂不可用，显示已索引内容", systemImage: "icloud.slash")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.orange)
             }
         }
         .padding(.vertical, 4)

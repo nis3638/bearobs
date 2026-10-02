@@ -14,6 +14,7 @@ enum IndexMigrations {
     static let upgradeOccurrenceMetadata = "v3_upgrade_occurrence_metadata"
     static let createCJKNoteFTS = "v4_create_cjk_note_fts"
     static let createNoteDiagnostics = "v5_create_note_diagnostics"
+    static let createIndexAvailability = "v6_create_index_availability"
 
     static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -22,6 +23,7 @@ enum IndexMigrations {
         migrator.registerMigration(upgradeOccurrenceMetadata, migrate: upgradeOccurrences)
         migrator.registerMigration(createCJKNoteFTS, migrate: createCJKFTS)
         migrator.registerMigration(createNoteDiagnostics, migrate: createDiagnostics)
+        migrator.registerMigration(createIndexAvailability, migrate: createAvailability)
         return migrator
     }
 
@@ -181,6 +183,18 @@ enum IndexMigrations {
             table.primaryKey(["note_path", "code"])
             table.check(sql: "code <> ''")
         }
+    }
+
+    private static func createAvailability(_ database: Database) throws {
+        try database.create(table: "index_availability", options: .withoutRowID) { table in
+            table.primaryKey("singleton", .integer)
+            table.column("unavailable_count", .integer).notNull()
+            table.check(sql: "singleton = 1")
+            table.check(sql: "unavailable_count >= 0")
+        }
+        try database.execute(
+            sql: "INSERT INTO index_availability (singleton, unavailable_count) VALUES (1, 0)"
+        )
     }
 
     private static func upgradeOccurrences(_ database: Database) throws {

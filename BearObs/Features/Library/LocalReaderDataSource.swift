@@ -19,12 +19,31 @@ extension ReaderDataSource {
     public static func localVault(
         _ store: LocalVaultStore,
         limits: MarkdownParseLimits = .default,
-        wikiLinks: ReaderWikiLinkDataSource = .empty
+        wikiLinks: ReaderWikiLinkDataSource = .empty,
+        indexedFallback: ReaderIndexedFallback? = nil
     ) -> ReaderDataSource {
-        let loader = LocalReaderLoader(store: store, limits: limits, wikiLinks: wikiLinks)
-        return ReaderDataSource { path in
+        let loader = LocalReaderLoader(
+            store: store,
+            limits: limits,
+            wikiLinks: wikiLinks,
+            indexedFallback: indexedFallback
+        )
+        return ReaderDataSource.content(load: { path in
             try await loader.load(path)
-        }
+        })
+    }
+}
+
+public struct ReaderIndexedFallback: Sendable {
+    let repository: SQLiteIndexRepository
+    let snapshots: IndexedSourceSnapshotStore
+
+    public init(
+        repository: SQLiteIndexRepository,
+        snapshots: IndexedSourceSnapshotStore
+    ) {
+        self.repository = repository
+        self.snapshots = snapshots
     }
 }
 
@@ -46,30 +65,72 @@ private actor LocalReaderLoader {
     let store: LocalVaultStore
     let limits: MarkdownParseLimits
     let wikiLinks: ReaderWikiLinkDataSource
+    let indexedFallback: ReaderIndexedFallback?
 
     init(
         store: LocalVaultStore,
         limits: MarkdownParseLimits,
-        wikiLinks: ReaderWikiLinkDataSource
+        wikiLinks: ReaderWikiLinkDataSource,
+        indexedFallback: ReaderIndexedFallback?
     ) {
         self.store = store
         self.limits = limits
         self.wikiLinks = wikiLinks
+        self.indexedFallback = indexedFallback
     }
 
-    func load(_ path: VaultPath) async throws -> MarkdownRenderDocument {
+    func load(_ path: VaultPath) async throws -> ReaderContent {
         try Task.checkCancellation()
-        let snapshot = try store.read(
-            path,
-            maximumRetainedBytes: limits.maximumNoteBytes
-        )
+        let snapshot: LocalVaultFileSnapshot
+        do {
+            snapshot = try store.read(
+                path,
+                maximumRetainedBytes: limits.maximumNoteBytes
+            )
+        } catch let error as LocalVaultStoreError where Self.allowsIndexedFallback(error) {
+            return try await loadIndexedFallback(path)
+        }
         guard let data = snapshot.data else {
             throw ReaderDataSourceError.contentNotRetained
         }
+        return ReaderContent(
+            document: try await render(data, at: path),
+            freshness: .current
+        )
+    }
+
+    private func loadIndexedFallback(_ path: VaultPath) async throws -> ReaderContent {
+        guard
+            let indexedFallback,
+            let fingerprint = try await indexedFallback.repository.fingerprint(at: path),
+            fingerprint.parseStatus != "failed",
+            let data = try indexedFallback.snapshots.load(
+                matching: fingerprint.contentHash,
+                maximumBytes: limits.maximumNoteBytes
+            )
+        else {
+            throw ReaderDataSourceError.unavailable
+        }
+        return ReaderContent(
+            document: try await render(data, at: path),
+            freshness: .cached
+        )
+    }
+
+    private func render(_ data: Data, at path: VaultPath) async throws -> MarkdownRenderDocument {
         let note = try MarkdownNoteParser.parse(data, at: path, limits: limits)
         let destinations = try await wikiLinks.load(path)
         try Task.checkCancellation()
         return MarkdownReaderRenderer.render(note, wikiLinks: destinations)
+    }
+
+    nonisolated private static func allowsIndexedFallback(_ error: LocalVaultStoreError) -> Bool {
+        switch error {
+        case .unavailableFile, .fileIsNotRegular, .fileChangedDuringRead:
+            true
+        default:
+            false
+        }
     }
 }
 

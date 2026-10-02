@@ -42,6 +42,7 @@ struct AppEnvironment {
         } catch {
             throw AppEnvironmentError.invalidSelectedVault
         }
+        let scope = VaultScope(url: resolved.url)
         let currentSelection: VaultSelection
         if resolved.isStale {
             let refreshed = try VaultSelection.make(for: resolved.url)
@@ -56,7 +57,8 @@ struct AppEnvironment {
         return try make(
             root: resolved.url,
             selection: currentSelection,
-            directories: directories
+            directories: directories,
+            scope: scope
         )
     }
 
@@ -65,14 +67,36 @@ struct AppEnvironment {
         selection: VaultSelection,
         directories: AppDirectories
     ) throws -> AppEnvironment {
-        let scope = VaultScope(url: root)
+        try make(
+            root: root,
+            selection: selection,
+            directories: directories,
+            scope: nil
+        )
+    }
+
+    private static func make(
+        root: URL,
+        selection: VaultSelection,
+        directories: AppDirectories,
+        scope retainedScope: VaultScope?
+    ) throws -> AppEnvironment {
+        let scope = retainedScope ?? VaultScope(url: root)
         let metadata = try directories.metadata(for: selection.id)
         let repository = try SQLiteIndexRepository(
             path: metadata.appendingPathComponent("index.sqlite").path
         )
+        #if os(iOS)
+            let readerSnapshots = try? IndexedSourceSnapshotStore(
+                directory: metadata.appendingPathComponent("ReaderSnapshots", isDirectory: true)
+            )
+        #else
+            let readerSnapshots: IndexedSourceSnapshotStore? = nil
+        #endif
         let scanner = try IncrementalIndexScanner(
             root: root,
-            repository: repository
+            repository: repository,
+            snapshots: readerSnapshots
         )
         let indexReadiness = IndexReadiness(scanner: scanner)
         let vault = try LocalVaultStore(root: root)
@@ -85,6 +109,12 @@ struct AppEnvironment {
             },
             refresh: {
                 try await indexReadiness.refresh()
+            },
+            requiresInitialIndex: {
+                await indexReadiness.requiresInitialIndex()
+            },
+            availability: {
+                try await repository.availabilityState()
             }
         )
         let tagSource = TagLibraryDataSource(
@@ -143,7 +173,10 @@ struct AppEnvironment {
             favoritesModel: favoritesModel,
             readerSource: .localVault(
                 vault,
-                wikiLinks: .index(repository)
+                wikiLinks: .index(repository),
+                indexedFallback: readerSnapshots.map {
+                    ReaderIndexedFallback(repository: repository, snapshots: $0)
+                }
             ),
             editorSource: editorSource,
             vaultID: selection.id,
@@ -196,16 +229,38 @@ final class AppWorkspaceModel {
     private let directories: AppDirectories?
     private let selectionStore: VaultSelectionStore?
 
-    init() {
-        let directories = try? AppDirectories.makeLive()
+    init(
+        environment: AppEnvironment,
+        vaultURL: URL? = nil,
+        errorMessage: String? = nil,
+        directories: AppDirectories? = nil,
+        selectionStore: VaultSelectionStore? = nil
+    ) {
+        self.environment = environment
+        self.vaultURL = vaultURL
+        self.errorMessage = errorMessage
         self.directories = directories
-        self.selectionStore = directories.flatMap { try? VaultSelectionStore(directory: $0.root) }
-        if let environment = try? AppEnvironment.live() {
-            self.environment = environment
-            vaultURL = environment.vaultURL
-        } else {
-            environment = .unavailable
-            vaultURL = nil
+        self.selectionStore = selectionStore
+    }
+
+    convenience init() {
+        let directories = try? AppDirectories.makeLive()
+        let selectionStore = directories.flatMap { try? VaultSelectionStore(directory: $0.root) }
+        do {
+            let environment = try AppEnvironment.live()
+            self.init(
+                environment: environment,
+                vaultURL: environment.vaultURL,
+                directories: directories,
+                selectionStore: selectionStore
+            )
+        } catch {
+            self.init(
+                environment: .unavailable,
+                errorMessage: Self.vaultRecoveryMessage(for: error),
+                directories: directories,
+                selectionStore: selectionStore
+            )
         }
         if let autoOpenVault {
             openVault(autoOpenVault)
@@ -226,6 +281,9 @@ final class AppWorkspaceModel {
 
     func openVault(_ root: URL) {
         errorMessage = nil
+        if vaultURL?.standardizedFileURL == root.standardizedFileURL {
+            return
+        }
         guard let directories, let selectionStore else {
             errorMessage = "无法准备本地数据目录。"
             return
@@ -244,6 +302,63 @@ final class AppWorkspaceModel {
             errorMessage = "无法打开此 Vault，请确认它是可访问的文件夹。"
         }
     }
+
+    func handleVaultImport(_ result: Result<[URL], any Error>) {
+        switch Self.vaultImportDecision(for: result) {
+        case .selected(let url):
+            openVault(url)
+        case .cancelled:
+            break
+        case .failed:
+            errorMessage = "无法完成文件夹选择，请稍后重试。"
+        }
+    }
+
+    func dismissErrorMessage() {
+        errorMessage = nil
+    }
+
+    static func vaultRecoveryMessage(for error: any Error) -> String? {
+        if let environmentError = error as? AppEnvironmentError {
+            switch environmentError {
+            case .vaultNotSelected:
+                return nil
+            case .invalidSelectedVault:
+                return "之前选择的 Vault 已失效或无权访问，请重新选择。"
+            case .applicationSupportUnavailable, .unavailable:
+                return "无法准备本地数据，请稍后重试。"
+            }
+        }
+        if error is VaultSelectionStoreError {
+            return "无法恢复之前选择的 Vault，请重新选择。"
+        }
+        return "之前选择的 Vault 已失效或无权访问，请重新选择。"
+    }
+
+    static func vaultImportDecision(
+        for result: Result<[URL], any Error>
+    ) -> VaultImportDecision {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return .failed }
+            return .selected(url)
+        case .failure(let error):
+            if error is CancellationError { return .cancelled }
+            let cocoaError = error as NSError
+            if cocoaError.domain == NSCocoaErrorDomain,
+                cocoaError.code == NSUserCancelledError
+            {
+                return .cancelled
+            }
+            return .failed
+        }
+    }
+}
+
+enum VaultImportDecision: Equatable {
+    case selected(URL)
+    case cancelled
+    case failed
 }
 
 private final class VaultScope {
@@ -262,9 +377,11 @@ private final class VaultScope {
     }
 }
 
-private actor IndexReadiness {
+actor IndexReadiness {
     private let scanner: IncrementalIndexScanner
     private var isReady = false
+    private var readinessTask: Task<IncrementalIndexReport, Error>?
+    private var lastReport: IncrementalIndexReport?
 
     init(scanner: IncrementalIndexScanner) {
         self.scanner = scanner
@@ -272,18 +389,39 @@ private actor IndexReadiness {
 
     func ensureReady() async throws {
         guard !isReady else { return }
-        _ = try await scanner.scan()
-        isReady = true
+        if let readinessTask {
+            lastReport = try await readinessTask.value
+            return
+        }
+
+        let readinessTask = Task { try await scanner.scan() }
+        self.readinessTask = readinessTask
+        do {
+            lastReport = try await readinessTask.value
+            isReady = true
+            self.readinessTask = nil
+        } catch {
+            self.readinessTask = nil
+            throw error
+        }
+    }
+
+    func requiresInitialIndex() -> Bool {
+        !isReady
     }
 
     func refresh() async throws {
-        _ = try await scanner.scan()
+        lastReport = try await scanner.scan()
         isReady = true
     }
 
     func refresh(_ path: VaultPath) async throws {
         try await scanner.refresh(path)
         isReady = true
+    }
+
+    func latestReport() -> IncrementalIndexReport? {
+        lastReport
     }
 }
 

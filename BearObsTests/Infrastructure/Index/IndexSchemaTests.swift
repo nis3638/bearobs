@@ -29,7 +29,7 @@ final class IndexSchemaTests: XCTestCase {
         XCTAssertTrue(
             Set([
                 "notes", "tags", "note_tags", "links", "attachments", "note_fts",
-                "note_cjk_fts", "note_diagnostics",
+                "note_cjk_fts", "note_diagnostics", "index_availability",
             ])
             .isSubset(of: tables)
         )
@@ -38,9 +38,16 @@ final class IndexSchemaTests: XCTestCase {
             [
                 "v1_create_index_tables", "v2_create_note_fts",
                 "v3_upgrade_occurrence_metadata", "v4_create_cjk_note_fts",
-                "v5_create_note_diagnostics",
+                "v5_create_note_diagnostics", "v6_create_index_availability",
             ]
         )
+        let unavailableCount = try queue.read { database in
+            try Int.fetchOne(
+                database,
+                sql: "SELECT unavailable_count FROM index_availability WHERE singleton = 1"
+            )
+        }
+        XCTAssertEqual(unavailableCount, 0)
         let noteTagColumns = try queue.read { database in
             try String.fetchAll(database, sql: "SELECT name FROM pragma_table_info('note_tags')")
         }
@@ -126,7 +133,7 @@ final class IndexSchemaTests: XCTestCase {
             [
                 "v1_create_index_tables", "v2_create_note_fts",
                 "v3_upgrade_occurrence_metadata", "v4_create_cjk_note_fts",
-                "v5_create_note_diagnostics",
+                "v5_create_note_diagnostics", "v6_create_index_availability",
             ]
         )
         let ftsCount = try secondOpen.read { database in

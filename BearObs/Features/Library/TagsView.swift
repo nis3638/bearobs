@@ -4,6 +4,22 @@ import SwiftUI
     import BearObsIndex
 #endif
 
+public enum TagListPresentation {
+    public static let staleWarning = "标签更新失败，正在显示上次结果"
+
+    public static func accessibilityLabel(name: String, noteCount: Int) -> String {
+        LibraryAccessibilityText.tagLabel(name: name, noteCount: noteCount)
+    }
+
+    public static func accessibilityValue(isSelected: Bool) -> String {
+        isSelected ? "已选中" : "未选中"
+    }
+
+    public static func selectionIndicatorName(isSelected: Bool) -> String? {
+        isSelected ? "checkmark" : nil
+    }
+}
+
 public struct TagsView: View {
     @State private var model: TagsFeatureModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -65,7 +81,7 @@ public struct TagsView: View {
             if showsFailure {
                 Section {
                     Label {
-                        Text("标签更新失败，正在显示上次结果")
+                        Text(TagListPresentation.staleWarning)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(.orange)
@@ -100,7 +116,7 @@ public struct TagsView: View {
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(
-                        LibraryAccessibilityText.tagLabel(
+                        TagListPresentation.accessibilityLabel(
                             name: tag.displayName,
                             noteCount: tag.noteCount
                         )

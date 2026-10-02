@@ -10,6 +10,7 @@ MARKETING_VERSION = 0.1.0
 CURRENT_PROJECT_VERSION = 1
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_KEY_CFBundleDisplayName = BearObs
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 // Recorded platform seam (REQ-004 §7 / ADR-010): the iOS read-only app target.
 // Deployment target matches Package.swift's `.iOS(.v26)` declaration.
 SDKROOT = iphoneos
@@ -18,3 +19,5 @@ IPHONEOS_DEPLOYMENT_TARGET = 26.0
 TARGETED_DEVICE_FAMILY = 1,2
 SWIFT_VERSION = 6.0
 INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight

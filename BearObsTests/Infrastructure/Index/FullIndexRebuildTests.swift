@@ -5,6 +5,7 @@ import XCTest
 #if SWIFT_PACKAGE
     import BearObsDomain
     @testable import BearObsIndex
+    import BearObsLocalVault
     import BearObsMarkdown
 #else
     @testable import BearObs
@@ -34,15 +35,17 @@ final class FullIndexRebuildTests: XCTestCase {
     func testRebuildFailureRollsBackAndPreservesThePreviousIndex() async throws {
         let fixture = try makeFixture()
         try write("# Old\n\noldterm", at: fixture.root, path: "old.md")
+        let changed = try write(
+            "# Before\n\nbeforeterm", at: fixture.root, path: "changed.md")
         _ = try await fixture.rebuildScanner.scan()
         try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("old.md"))
-        try write("# Blocked\n\nnewterm", at: fixture.root, path: "blocked.md")
+        try write("# After\n\nafterterm", to: changed)
         try await fixture.rebuildRepository.databasePool.write { database in
             try database.execute(
                 sql: """
                     CREATE TRIGGER reject_rebuild
-                    BEFORE INSERT ON notes
-                    WHEN NEW.path = 'blocked.md'
+                    BEFORE DELETE ON notes
+                    WHEN OLD.path = 'old.md'
                     BEGIN
                         SELECT RAISE(ABORT, 'injected rebuild failure');
                     END
@@ -58,9 +61,116 @@ final class FullIndexRebuildTests: XCTestCase {
         }
 
         let oldHits = try await fixture.rebuildRepository.search("oldterm")
-        let newHits = try await fixture.rebuildRepository.search("newterm")
+        let beforeHits = try await fixture.rebuildRepository.search("beforeterm")
+        let afterHits = try await fixture.rebuildRepository.search("afterterm")
         XCTAssertEqual(oldHits.map(\.path.description), ["old.md"])
-        XCTAssertEqual(newHits, [])
+        XCTAssertEqual(beforeHits.map(\.path.description), ["changed.md"])
+        XCTAssertEqual(afterHits, [])
+    }
+
+    func testRebuildRetainsUnreadableIndexedFileWhileReplacingAndDeletingOthers()
+        async throws
+    {
+        let fixture = try makeFixture()
+        let unavailable = try write(
+            "# Old unavailable\n\nold-offline-term", at: fixture.root, path: "a.md")
+        let changed = try write("# Before\n\nold-readable-term", at: fixture.root, path: "b.md")
+        let deleted = try write("# Deleted\n\ndeleted-term", at: fixture.root, path: "c.md")
+        _ = try await fixture.rebuildScanner.scan()
+        try write("# New unavailable\n\nnew-offline-term", to: unavailable)
+        try write("# After\n\nnew-readable-term", to: changed)
+        try FileManager.default.removeItem(at: deleted)
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let unavailablePath = try VaultPath(decodedRelativePath: "a.md")
+        let scanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.rebuildRepository,
+            limits: .default,
+            inventory: store.markdownInventory,
+            read: { path, maximumRetainedBytes in
+                if path == unavailablePath {
+                    throw LocalVaultStoreError.unavailableFile
+                }
+                return try store.read(path, maximumRetainedBytes: maximumRetainedBytes)
+            }
+        )
+
+        let report = try await scanner.rebuild()
+        let oldOfflineHits = try await fixture.rebuildRepository.search("old-offline-term")
+        let newOfflineHits = try await fixture.rebuildRepository.search("new-offline-term")
+        let newReadableHits = try await fixture.rebuildRepository.search("new-readable-term")
+        let deletedFingerprint = try await fixture.rebuildRepository.fingerprint(
+            at: VaultPath(decodedRelativePath: "c.md")
+        )
+
+        XCTAssertEqual(report, .init(indexed: 1, failed: 1))
+        XCTAssertEqual(oldOfflineHits.map(\.path.description), ["a.md"])
+        XCTAssertEqual(newOfflineHits, [])
+        XCTAssertEqual(newReadableHits.map(\.path.description), ["b.md"])
+        XCTAssertNil(deletedFingerprint)
+    }
+
+    func testRebuildCountsUnreadableNewFileWithoutCreatingAnIndexEntry() async throws {
+        let fixture = try makeFixture()
+        try write("# Existing", at: fixture.root, path: "existing.md")
+        _ = try await fixture.rebuildScanner.scan()
+        try write("# New but offline", at: fixture.root, path: "new.md")
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let newPath = try VaultPath(decodedRelativePath: "new.md")
+        let scanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.rebuildRepository,
+            limits: .default,
+            inventory: store.markdownInventory,
+            read: { path, maximumRetainedBytes in
+                if path == newPath {
+                    throw LocalVaultStoreError.fileChangedDuringRead
+                }
+                return try store.read(path, maximumRetainedBytes: maximumRetainedBytes)
+            }
+        )
+
+        let report = try await scanner.rebuild()
+        let newFingerprint = try await fixture.rebuildRepository.fingerprint(at: newPath)
+        let existingHits = try await fixture.rebuildRepository.search("Existing")
+
+        XCTAssertEqual(report, .init(indexed: 1, failed: 1))
+        XCTAssertNil(newFingerprint)
+        XCTAssertEqual(existingHits.map(\.path.description), ["existing.md"])
+    }
+
+    func testRebuildReplacesRetainedEntryAfterUnavailableFileRecovers() async throws {
+        let fixture = try makeFixture()
+        let note = try write("# Before\n\nbefore-term", at: fixture.root, path: "note.md")
+        _ = try await fixture.rebuildScanner.scan()
+        try write("# After\n\nafter-term", to: note)
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let notePath = try VaultPath(decodedRelativePath: "note.md")
+        let unavailableScanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.rebuildRepository,
+            limits: .default,
+            inventory: store.markdownInventory,
+            read: { path, maximumRetainedBytes in
+                if path == notePath {
+                    throw LocalVaultStoreError.unavailableFile
+                }
+                return try store.read(path, maximumRetainedBytes: maximumRetainedBytes)
+            }
+        )
+        let unavailable = try await unavailableScanner.rebuild()
+        XCTAssertEqual(unavailable, .init(failed: 1))
+
+        let recovered = try await fixture.rebuildScanner.rebuild()
+        let beforeHits = try await fixture.rebuildRepository.search("before-term")
+        let afterHits = try await fixture.rebuildRepository.search("after-term")
+
+        XCTAssertEqual(recovered, .init(indexed: 1))
+        XCTAssertEqual(beforeHits, [])
+        XCTAssertEqual(afterHits.map(\.path.description), ["note.md"])
     }
 }
 
@@ -151,8 +261,14 @@ extension FullIndexRebuildTests {
         )
     }
 
-    private func write(_ content: String, at root: URL, path: String) throws {
+    @discardableResult
+    private func write(_ content: String, at root: URL, path: String) throws -> URL {
         let url = root.appendingPathComponent(path)
+        try write(content, to: url)
+        return url
+    }
+
+    private func write(_ content: String, to url: URL) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true

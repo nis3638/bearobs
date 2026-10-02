@@ -65,6 +65,7 @@ enum ReaderEditorLayoutToken {
 }
 
 public struct ReaderView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: ReaderFeatureModel
     @State private var destination: VaultPath?
     @State private var editorModel: EditorFeatureModel?
@@ -249,6 +250,20 @@ public struct ReaderView: View {
                 onUnsavedChangesChanged(isDirty ?? false)
             }
             .onDisappear { onUnsavedChangesChanged(false) }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active, model.contentFreshness == .cached else { return }
+                Task { await model.load() }
+            }
+            #if os(iOS)
+                .task(id: model.contentFreshness) {
+                    guard model.contentFreshness == .cached else { return }
+                    while !Task.isCancelled, model.contentFreshness == .cached {
+                        try? await Task.sleep(for: .seconds(3))
+                        guard !Task.isCancelled else { return }
+                        await model.load()
+                    }
+                }
+            #endif
     }
 
     @ViewBuilder
@@ -295,31 +310,47 @@ public struct ReaderView: View {
     /// restore target from a finished editing session positions the scroll
     /// on first layout (REQ-002 6.1/6.4).
     private func readerContent(_ document: MarkdownRenderDocument) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                ReaderDocumentBlocksView(entries: document.entries)
+        VStack(spacing: 0) {
+            if model.contentFreshness == .cached {
+                Label(
+                    "源文件暂不可用，正在显示上次成功索引的内容。",
+                    systemImage: "icloud.slash"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
+                .padding(.vertical, 10)
+                .background(.quaternary)
+                .accessibilityIdentifier("reader-cached-warning")
             }
-            .frame(
-                maxWidth: ReaderEditorLayoutToken.contentMaxWidth,
-                alignment: .leading
-            )
-            .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
-            .padding(.vertical, ReaderEditorLayoutToken.contentVerticalPadding)
-            .scrollTargetLayout()
-        }
-        .scrollPosition($scrollPosition)
-        .coordinateSpace(name: ReaderViewportTracker.scrollCoordinateSpace)
-        .onPreferenceChange(ReaderBlockFramesPreferenceKey.self) { frames in
-            readerViewport = ReaderViewportTracker.snapshot(
-                frames: frames,
-                entries: document.entries,
-                path: requestedPath
-            )
-        }
-        .onAppear {
-            guard let index = pendingRestoreBlockIndex else { return }
-            scrollPosition = ScrollPosition(id: index, anchor: .top)
-            pendingRestoreBlockIndex = nil
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    ReaderDocumentBlocksView(entries: document.entries)
+                }
+                .frame(
+                    maxWidth: ReaderEditorLayoutToken.contentMaxWidth,
+                    alignment: .leading
+                )
+                .padding(.horizontal, ReaderEditorLayoutToken.contentHorizontalPadding)
+                .padding(.vertical, ReaderEditorLayoutToken.contentVerticalPadding)
+                .scrollTargetLayout()
+            }
+            .scrollPosition($scrollPosition)
+            .coordinateSpace(name: ReaderViewportTracker.scrollCoordinateSpace)
+            .refreshable { await model.load() }
+            .onPreferenceChange(ReaderBlockFramesPreferenceKey.self) { frames in
+                readerViewport = ReaderViewportTracker.snapshot(
+                    frames: frames,
+                    entries: document.entries,
+                    path: requestedPath
+                )
+            }
+            .onAppear {
+                guard let index = pendingRestoreBlockIndex else { return }
+                scrollPosition = ScrollPosition(id: index, anchor: .top)
+                pendingRestoreBlockIndex = nil
+            }
         }
         .accessibilityIdentifier("reader-content")
     }
@@ -725,6 +756,7 @@ struct ReaderInlineAccessibilitySegment: Equatable, Identifiable {
 
 private struct ReaderInlineAccessibilityView: View {
     let inline: [MarkdownRenderInline]
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         HStack(spacing: 0) {
@@ -733,8 +765,13 @@ private struct ReaderInlineAccessibilityView: View {
             ) {
                 _, segment in
                 if let destination = segment.destination {
-                    Link(segment.label, destination: destination)
-                        .accessibilityLabel("链接：\(segment.label)")
+                    Button(segment.label) {
+                        openURL(destination)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("链接：\(segment.label)")
+                    .accessibilityIdentifier("reader-inline-link")
+                    .accessibilityAddTraits(.isLink)
                 } else {
                     Text(segment.label)
                 }

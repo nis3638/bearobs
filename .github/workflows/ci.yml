@@ -15,13 +15,14 @@ concurrency:
 jobs:
   baseline:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Verify pinned Xcode
@@ -45,8 +46,11 @@ jobs:
       - name: Run unit and UI tests
         run: ./scripts/ci/test.sh
 
-      - name: Run iOS simulator and smoke tests
+      - name: Run iPhone, iPad and iOS coverage gates
         run: ./scripts/ci/test-ios.sh
+        env:
+          COVERAGE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_IOS_RUNTIME: "26.0"
 
       - name: Collect coverage
         run: ./scripts/ci/coverage.sh

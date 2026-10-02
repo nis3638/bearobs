@@ -295,6 +295,74 @@ final class IndexRepositoryTests: XCTestCase {
         XCTAssertEqual(counts, [0, 0, 0, 0, 0, 0])
     }
 
+    func testAvailabilityPersistsOnlyIndexedStalePathsAndAnAnonymousTotal() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("index.sqlite")
+        let repository = try SQLiteIndexRepository(path: databaseURL.path)
+        let indexed = try makeInput("# Indexed", path: "indexed.md", hashDigit: "a")
+        let unindexedPath = try VaultPath(decodedRelativePath: "private/new.md")
+        try await repository.replace(indexed)
+
+        try await repository.updateAvailability(
+            unavailablePaths: [indexed.path, unindexedPath],
+            readablePaths: [],
+            inventoryComplete: true
+        )
+
+        let reopened = try SQLiteIndexRepository(path: databaseURL.path)
+        let state = try await reopened.availabilityState()
+        let persistedDiagnostics = try await reopened.databasePool.read { database in
+            try String.fetchAll(
+                database,
+                sql: "SELECT code FROM note_diagnostics WHERE note_path = 'indexed.md'"
+            )
+        }
+        XCTAssertEqual(
+            state,
+            IndexAvailabilityState(
+                unavailableCount: 2,
+                staleNotePaths: [indexed.path]
+            )
+        )
+        XCTAssertEqual(state.diagnostic, .sourceTemporarilyUnavailable)
+        XCTAssertEqual(persistedDiagnostics, ["index.source-temporarily-unavailable"])
+    }
+
+    func testAvailabilityRecoveryClearsOnlyTheStaleDiagnostic() async throws {
+        let repository = try makeRepository()
+        let degraded = try makeInput(
+            "---\ntitle: [\n---\nreadable body",
+            path: "degraded.md",
+            hashDigit: "d"
+        )
+        try await repository.replace(degraded)
+        try await repository.updateAvailability(
+            unavailablePaths: [degraded.path],
+            readablePaths: [],
+            inventoryComplete: true
+        )
+
+        try await repository.updateAvailability(
+            unavailablePaths: [],
+            readablePaths: [degraded.path],
+            inventoryComplete: true
+        )
+
+        let state = try await repository.availabilityState()
+        let diagnostics = try await repository.databasePool.read { database in
+            try String.fetchAll(
+                database,
+                sql: "SELECT code FROM note_diagnostics WHERE note_path = 'degraded.md'"
+            )
+        }
+        XCTAssertEqual(state, .init(unavailableCount: 0, staleNotePaths: []))
+        XCTAssertNil(state.diagnostic)
+        XCTAssertEqual(diagnostics, ["frontmatter.invalid-yaml"])
+    }
+
     private func makeInput(
         _ source: String,
         path: String,

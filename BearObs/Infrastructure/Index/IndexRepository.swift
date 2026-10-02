@@ -3,6 +3,7 @@ import GRDB
 
 #if SWIFT_PACKAGE
     import BearObsDomain
+    import BearObsLocalVault
     import BearObsMarkdown
 #endif
 
@@ -93,6 +94,24 @@ public struct IndexedNoteFingerprint: Equatable, Sendable {
     public let parseStatus: String
 }
 
+public enum IndexAvailabilityDiagnostic: String, Equatable, Sendable {
+    case sourceTemporarilyUnavailable = "index.source-temporarily-unavailable"
+}
+
+public struct IndexAvailabilityState: Equatable, Sendable {
+    public let unavailableCount: Int
+    public let staleNotePaths: Set<VaultPath>
+
+    public init(unavailableCount: Int, staleNotePaths: Set<VaultPath>) {
+        self.unavailableCount = unavailableCount
+        self.staleNotePaths = staleNotePaths
+    }
+
+    public var diagnostic: IndexAvailabilityDiagnostic? {
+        unavailableCount > 0 ? .sourceTemporarilyUnavailable : nil
+    }
+}
+
 enum PreparedIndexEntry: Sendable {
     case note(IndexNoteInput)
     case failure(
@@ -102,6 +121,15 @@ enum PreparedIndexEntry: Sendable {
         byteSize: Int64,
         diagnostic: String
     )
+
+    var path: VaultPath {
+        switch self {
+        case .note(let input):
+            input.path
+        case .failure(let path, _, _, _, _):
+            path
+        }
+    }
 }
 
 public final class SQLiteIndexRepository: Sendable {
@@ -140,18 +168,7 @@ public final class SQLiteIndexRepository: Sendable {
     public func remove(_ path: VaultPath) async throws {
         try await databasePool.write { database in
             let affectedTags = try tagNames(at: path, in: database)
-            try database.execute(
-                sql: "DELETE FROM note_fts WHERE path = ?",
-                arguments: [path.description]
-            )
-            try database.execute(
-                sql: "DELETE FROM note_cjk_fts WHERE path = ?",
-                arguments: [path.description]
-            )
-            try database.execute(
-                sql: "DELETE FROM notes WHERE path = ?",
-                arguments: [path.description]
-            )
+            try remove(path, in: database)
             try normalizeTags(affectedTags, in: database)
         }
     }
@@ -177,6 +194,52 @@ public final class SQLiteIndexRepository: Sendable {
                     )
                     return (path, fingerprint)
                 })
+        }
+    }
+
+    public func fingerprint(at path: VaultPath) async throws -> IndexedNoteFingerprint? {
+        try await databasePool.read { database in
+            guard
+                let row = try Row.fetchOne(
+                    database,
+                    sql: """
+                        SELECT path, content_hash, modified_at, byte_size, parse_status
+                        FROM notes
+                        WHERE path = ?
+                        """,
+                    arguments: [path.description]
+                )
+            else { return nil }
+            return IndexedNoteFingerprint(
+                path: try VaultPath(decodedRelativePath: row["path"]),
+                contentHash: try ContentHash(hex: row["content_hash"]),
+                modifiedAt: Date(timeIntervalSince1970: row["modified_at"]),
+                byteSize: row["byte_size"],
+                parseStatus: row["parse_status"]
+            )
+        }
+    }
+
+    public func availabilityState() async throws -> IndexAvailabilityState {
+        try await databasePool.read { database in
+            try availabilityState(in: database)
+        }
+    }
+
+    @discardableResult
+    func updateAvailability(
+        unavailablePaths: Set<VaultPath>,
+        readablePaths: Set<VaultPath>,
+        inventoryComplete: Bool
+    ) async throws -> IndexAvailabilityState {
+        try await databasePool.write { database in
+            try updateAvailability(
+                unavailablePaths: unavailablePaths,
+                readablePaths: readablePaths,
+                inventoryComplete: inventoryComplete,
+                in: database
+            )
+            return try availabilityState(in: database)
         }
     }
 
@@ -231,20 +294,26 @@ public final class SQLiteIndexRepository: Sendable {
         }
     }
 
-    func replaceAll<Source: Sendable>(
-        _ sources: [Source],
-        prepare: @escaping @Sendable (Source) throws -> PreparedIndexEntry
+    func replaceAll(
+        _ files: [LocalVaultFileMetadata],
+        retaining initiallyUnavailablePaths: Set<VaultPath>,
+        removeMissing: Bool,
+        prepare: @escaping @Sendable (LocalVaultFileMetadata) throws -> PreparedIndexEntry?
     ) async throws -> FullIndexRebuildReport {
-        try await databasePool.write { database in
-            try database.execute(sql: "DELETE FROM note_fts")
-            try database.execute(sql: "DELETE FROM note_cjk_fts")
-            try database.execute(sql: "DELETE FROM notes")
-            try database.execute(sql: "DELETE FROM tags")
+        try Task.checkCancellation()
+        return try await databasePool.write { database in
             var indexed = 0
-            var failed = 0
-            for source in sources {
+            var parseFailures = 0
+            var unavailablePaths = initiallyUnavailablePaths
+            var readablePaths: Set<VaultPath> = []
+            for file in files {
                 try Task.checkCancellation()
-                let entry = try prepare(source)
+                guard let entry = try prepare(file) else {
+                    unavailablePaths.insert(file.path)
+                    continue
+                }
+                unavailablePaths.remove(file.path)
+                readablePaths.insert(entry.path)
                 switch entry {
                 case .note(let input):
                     try replace(input, in: database)
@@ -258,16 +327,113 @@ public final class SQLiteIndexRepository: Sendable {
                         diagnostic: diagnostic,
                         in: database
                     )
-                    failed += 1
+                    parseFailures += 1
                 }
             }
+            if removeMissing {
+                let currentPaths = readablePaths.union(unavailablePaths)
+                let storedPaths = try String.fetchAll(database, sql: "SELECT path FROM notes")
+                    .map { try VaultPath(decodedRelativePath: $0) }
+                for path in storedPaths where !currentPaths.contains(path) {
+                    try Task.checkCancellation()
+                    try remove(path, in: database)
+                }
+            }
+            try updateAvailability(
+                unavailablePaths: unavailablePaths,
+                readablePaths: readablePaths,
+                inventoryComplete: removeMissing,
+                in: database
+            )
             try normalizeTags(in: database)
-            return FullIndexRebuildReport(indexed: indexed, failed: failed)
+            try resolveWikiLinks(in: database)
+            return FullIndexRebuildReport(
+                indexed: indexed,
+                failed: parseFailures + unavailablePaths.count
+            )
         }
     }
 }
 
 extension SQLiteIndexRepository {
+    private var unavailableDiagnostic: String {
+        IndexAvailabilityDiagnostic.sourceTemporarilyUnavailable.rawValue
+    }
+
+    private func availabilityState(in database: Database) throws -> IndexAvailabilityState {
+        let unavailableCount =
+            try Int.fetchOne(
+                database,
+                sql: "SELECT unavailable_count FROM index_availability WHERE singleton = 1"
+            ) ?? 0
+        let staleNotePaths = try Set(
+            String.fetchAll(
+                database,
+                sql: "SELECT note_path FROM note_diagnostics WHERE code = ?",
+                arguments: [unavailableDiagnostic]
+            ).map { try VaultPath(decodedRelativePath: $0) }
+        )
+        return IndexAvailabilityState(
+            unavailableCount: unavailableCount,
+            staleNotePaths: staleNotePaths
+        )
+    }
+
+    private func updateAvailability(
+        unavailablePaths: Set<VaultPath>,
+        readablePaths: Set<VaultPath>,
+        inventoryComplete: Bool,
+        in database: Database
+    ) throws {
+        if inventoryComplete {
+            try database.execute(
+                sql: "DELETE FROM note_diagnostics WHERE code = ?",
+                arguments: [unavailableDiagnostic]
+            )
+        } else {
+            for path in readablePaths {
+                try database.execute(
+                    sql: "DELETE FROM note_diagnostics WHERE note_path = ? AND code = ?",
+                    arguments: [path.description, unavailableDiagnostic]
+                )
+            }
+        }
+        for path in unavailablePaths {
+            try database.execute(
+                sql: """
+                    INSERT INTO note_diagnostics (note_path, code)
+                    SELECT path, ? FROM notes WHERE path = ?
+                    ON CONFLICT(note_path, code) DO NOTHING
+                    """,
+                arguments: [unavailableDiagnostic, path.description]
+            )
+        }
+        let countExpression = inventoryComplete ? "?" : "MAX(unavailable_count, ?)"
+        try database.execute(
+            sql: """
+                UPDATE index_availability
+                SET unavailable_count = \(countExpression)
+                WHERE singleton = 1
+                """,
+            arguments: [unavailablePaths.count]
+        )
+    }
+
+    private func remove(_ path: VaultPath, in database: Database) throws {
+        try database.execute(
+            sql: "DELETE FROM note_fts WHERE path = ?",
+            arguments: [path.description]
+        )
+        try database.execute(
+            sql: "DELETE FROM note_cjk_fts WHERE path = ?",
+            arguments: [path.description]
+        )
+        try database.execute(
+            sql: "DELETE FROM notes WHERE path = ?",
+            arguments: [path.description]
+        )
+    }
+
     private func tagNames(at path: VaultPath, in database: Database) throws -> Set<String> {
         try Set(
             String.fetchAll(

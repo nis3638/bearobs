@@ -153,6 +153,8 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		BE0000000000000000000007 /* BearObsIOSApp.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000003; };
 		BE0000000000000000000008 /* IOSWorkspaceView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000004; };
 		BE0000000000000000000009 /* BearObsIOSUITests.swift in iOS UI Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000005; };
+		BF1000000000000000000001 /* Assets.xcassets in iOS Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000003 /* Assets.xcassets */; };
+		BF1000000000000000000002 /* PrivacyInfo.xcprivacy in iOS Resources */ = {isa = PBXBuildFile; fileRef = BF1000000000000000000004 /* PrivacyInfo.xcprivacy */; };
 		BE000000000000000000000A /* Yams in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000D; };
 		BE000000000000000000000B /* Markdown in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000E; };
 		BE000000000000000000000C /* GRDB in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000F; };
@@ -346,6 +348,8 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		BE0000000000000000000005 /* BearObsIOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsIOSUITests.swift; sourceTree = "<group>"; };
 		BE0000000000000000000006 /* App-iOS.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = App-iOS.xcconfig; sourceTree = "<group>"; };
 		BE00000000000000000001F5 /* BearObsIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BearObsIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF1000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BF1000000000000000000004 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -745,6 +749,8 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			children = (
 				BE0000000000000000000003 /* BearObsIOSApp.swift */,
 				BE0000000000000000000004 /* IOSWorkspaceView.swift */,
+				BF1000000000000000000003 /* Assets.xcassets */,
+				BF1000000000000000000004 /* PrivacyInfo.xcprivacy */,
 			);
 			path = iOS;
 			sourceTree = "<group>";
@@ -869,7 +875,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		B0A000000000000000000063 /* App Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000064 /* Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000006 /* GoldenVault in Resources */, B0A000000000000000000009 /* WebDAV in Resources */, B0A000000000000000000110 /* ChineseSearchVault in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000065 /* UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		BE0000000000000000000012 /* iOS Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000012 /* iOS Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BF1000000000000000000001 /* Assets.xcassets in iOS Resources */, BF1000000000000000000002 /* PrivacyInfo.xcprivacy in iOS Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		BE0000000000000000000015 /* iOS UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		BE00000000000000000001FA /* iOS Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BE0000000000000000000228 /* GoldenVault in iOS Unit Resources */, BE0000000000000000000229 /* WebDAV in iOS Unit Resources */, BE000000000000000000022A /* ChineseSearchVault in iOS Unit Resources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
