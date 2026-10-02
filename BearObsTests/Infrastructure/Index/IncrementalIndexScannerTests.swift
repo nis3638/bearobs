@@ -5,6 +5,7 @@ import XCTest
 #if SWIFT_PACKAGE
     import BearObsDomain
     @testable import BearObsIndex
+    import BearObsLocalVault
     import BearObsMarkdown
 #else
     @testable import BearObs
@@ -89,6 +90,107 @@ final class IncrementalIndexScannerTests: XCTestCase {
         XCTAssertEqual(fts["body"] as String, "")
         XCTAssertEqual(fts["tags"] as String, "")
         XCTAssertEqual(diagnostics, ["markdown.note-too-large"])
+    }
+
+    func testTemporarilyUnavailableInventoryEntryKeepsItsIndexAndDoesNotBlockOthers()
+        async throws
+    {
+        let fixture = try makeFixture()
+        try write("# Preserved", at: fixture.root, path: "preserved.md")
+        let changed = try write("# Before", at: fixture.root, path: "changed.md")
+        _ = try await fixture.scanner.scan()
+        try write("# After", to: changed)
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let completeInventory = try store.markdownInventory()
+        let preservedPath = try VaultPath(decodedRelativePath: "preserved.md")
+        let scanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.repository,
+            limits: .default,
+            inventory: {
+                LocalVaultMarkdownInventory(
+                    readable: completeInventory.readable.filter { $0.path != preservedPath },
+                    temporarilyUnavailablePaths: [preservedPath]
+                )
+            },
+            read: store.read
+        )
+
+        let report = try await scanner.scan()
+        let preservedRow = try await noteRow("preserved.md", in: fixture.repository)
+        let changedRow = try await noteRow("changed.md", in: fixture.repository)
+
+        XCTAssertEqual(report, .init(indexed: 1, failed: 1))
+        XCTAssertEqual(preservedRow["title"] as String, "Preserved")
+        XCTAssertEqual(changedRow["title"] as String, "After")
+    }
+
+    func testReadFailureKeepsItsIndexAndContinuesReadingOtherFiles() async throws {
+        let fixture = try makeFixture()
+        let unavailable = try write("# Old unavailable", at: fixture.root, path: "a.md")
+        let changed = try write("# Before", at: fixture.root, path: "b.md")
+        _ = try await fixture.scanner.scan()
+        try write("# New unavailable", to: unavailable)
+        try write("# After", to: changed)
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let unavailablePath = try VaultPath(decodedRelativePath: "a.md")
+        let scanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.repository,
+            limits: .default,
+            inventory: store.markdownInventory,
+            read: { path, maximumRetainedBytes in
+                if path == unavailablePath {
+                    throw LocalVaultStoreError.unavailableFile
+                }
+                return try store.read(path, maximumRetainedBytes: maximumRetainedBytes)
+            }
+        )
+
+        let report = try await scanner.scan()
+        let unavailableRow = try await noteRow("a.md", in: fixture.repository)
+        let changedRow = try await noteRow("b.md", in: fixture.repository)
+
+        XCTAssertEqual(report, .init(indexed: 1, failed: 1))
+        XCTAssertEqual(unavailableRow["title"] as String, "Old unavailable")
+        XCTAssertEqual(changedRow["title"] as String, "After")
+    }
+
+    func testIncompleteInventoryIndexesReadableFilesWithoutRemovingMissingEntries()
+        async throws
+    {
+        let fixture = try makeFixture()
+        let preserved = try write("# Preserved", at: fixture.root, path: "preserved.md")
+        let changed = try write("# Before", at: fixture.root, path: "changed.md")
+        _ = try await fixture.scanner.scan()
+        try FileManager.default.removeItem(at: preserved)
+        try write("# After", to: changed)
+
+        let store = try LocalVaultStore(root: fixture.root)
+        let inventory = try store.markdownInventory()
+        let scanner = try IncrementalIndexScanner(
+            root: fixture.root,
+            repository: fixture.repository,
+            limits: .default,
+            inventory: {
+                LocalVaultMarkdownInventory(
+                    readable: inventory.readable,
+                    temporarilyUnavailablePaths: [],
+                    allowsRemoval: false
+                )
+            },
+            read: store.read
+        )
+
+        let report = try await scanner.scan()
+        let preservedRow = try await noteRow("preserved.md", in: fixture.repository)
+        let changedRow = try await noteRow("changed.md", in: fixture.repository)
+
+        XCTAssertEqual(report, .init(indexed: 1))
+        XCTAssertEqual(preservedRow["title"] as String, "Preserved")
+        XCTAssertEqual(changedRow["title"] as String, "After")
     }
 
     func testRefreshUpdatesOneSavedNoteWithoutAFullVaultScan() async throws {

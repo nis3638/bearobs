@@ -15,12 +15,33 @@ public struct VaultSelection: Codable, Equatable, Sendable {
     }
 
     #if os(macOS) || os(iOS)
+        /// Recorded platform seam (REQ-004 §7, ADR-010): `.withSecurityScope`
+        /// is a macOS bookmark option. iOS grants access scope to
+        /// document-picker URLs directly, so bookmarks are created and
+        /// resolved without options there and access is restored through
+        /// `startAccessingSecurityScopedResource` on the resolved URL.
+        private static var bookmarkCreationOptions: URL.BookmarkCreationOptions {
+            #if os(macOS)
+                [.withSecurityScope]
+            #else
+                []
+            #endif
+        }
+
+        private static var bookmarkResolutionOptions: URL.BookmarkResolutionOptions {
+            #if os(macOS)
+                [.withSecurityScope]
+            #else
+                []
+            #endif
+        }
+
         public static func make(for root: URL) throws -> VaultSelection {
             guard root.isFileURL else {
                 throw VaultSelectionStoreError.invalidVaultURL
             }
             let bookmark = try root.bookmarkData(
-                options: [.withSecurityScope],
+                options: bookmarkCreationOptions,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -31,7 +52,7 @@ public struct VaultSelection: Codable, Equatable, Sendable {
             var isStale = false
             let url = try URL(
                 resolvingBookmarkData: bookmarkData,
-                options: [.withSecurityScope],
+                options: Self.bookmarkResolutionOptions,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )

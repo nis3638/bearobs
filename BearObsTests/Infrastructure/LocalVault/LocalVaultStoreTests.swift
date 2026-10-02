@@ -50,6 +50,24 @@ final class LocalVaultStoreTests: XCTestCase {
         )
     }
 
+    func testInventoryContinuesPastAnUnreadableMarkdownFile() throws {
+        let root = try makeDirectory()
+        let unavailable = root.appendingPathComponent("a-unavailable.md")
+        try write(Data("unavailable".utf8), to: unavailable)
+        try write(Data("readable".utf8), to: root.appendingPathComponent("b-readable.md"))
+        XCTAssertEqual(chmod(unavailable.path, 0), 0)
+        defer { _ = chmod(unavailable.path, S_IRUSR | S_IWUSR) }
+        let store = try LocalVaultStore(root: root)
+
+        let inventory = try store.markdownInventory()
+
+        XCTAssertEqual(inventory.readable.map(\.path.description), ["b-readable.md"])
+        XCTAssertEqual(
+            inventory.temporarilyUnavailablePaths.map(\.description),
+            ["a-unavailable.md"]
+        )
+    }
+
     func testRejectsNegativeRetentionLimit() throws {
         let root = try makeDirectory()
         let path = try VaultPath(decodedRelativePath: "note.md")

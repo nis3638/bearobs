@@ -12,17 +12,26 @@ Spike、M0-09 Atomic Write Spike，以及 M0-10 Domain Model。项目 Git 根目
 ## 工程约束
 
 - Xcode 固定为 `.xcode-version` 中的 26.5，最低部署版本为 macOS 15.0。
-- 工程保持一个 App target、一个 Unit Test target、一个 UI Test target。
+- M-iOS 起新增 iOS 只读 App target（`BearObsIOS`，最低部署版本 iOS 26.0，与
+  `Package.swift` 的 `.iOS(.v26)` 平台声明一致）和 iOS 冒烟 UI Test target；
+  平台策略见 [ADR-010](adr/ADR-010-ios-platform-strategy.md)。
+- 共享源码以文件成员方式同时进入 Mac 与 iOS App target；AppKit 编辑面文件仅进入 Mac
+  target。每次新增共享源文件必须同时登记两侧成员，两平台构建门禁负责兜底。
 - 共享 `BearObs` scheme 必须提交；CI 不读取 `xcuserdata`。
-- Bundle ID 集中在 `Config/App.xcconfig`，当前初始化值为 `com.ivows.bearobs`。
+- Bundle ID 集中在 `Config/App.xcconfig`，当前初始化值为 `com.ivows.bearobs`；
+  iOS App target 的 Bundle ID 集中在 `Config/App-iOS.xcconfig`。
 - Debug 和 Release 都把编译 warning 当 error。
 
 ## 本地与 CI 命令
 
 ```bash
 make check      # swift-format、秘密模式和工程卫生检查
-make build      # Debug + Release macOS build
+make build      # macOS + iOS 模拟器 Debug/Release 双平台构建门禁
 make test       # Unit Test + UI Test
+make build-ios  # 与 make build 相同的双平台构建门禁（M-iOS 兼容入口）
+make test-ios   # 共享核心 iOS 模拟器测试 + iOS 冒烟 UI 测试（M-iOS 起）
+make dist-macos # macOS Release 包：ad-hoc 签名 .app + zip + dmg，输出到 out/dist/
+make dist-ios   # iOS 开发签名 .ipa，需 DEVELOPMENT_TEAM=<team id>（M-iOS 起）
 make coverage   # Unit Test coverage，输出到 .build/reports/
 make spike-grdb # GRDB/FTS5 测试、覆盖率门禁和 macOS 15 交叉编译
 make spike-markdown # Markdown 测试、覆盖率门禁和 macOS 15 交叉编译

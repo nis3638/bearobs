@@ -1,9 +1,12 @@
 # BearObs 产品需求文档
 
 > 文档状态：已确认基线
-> 版本：1.2
-> 日期：2026-09-02
-> 适用范围：macOS 15+ 对外 MVP；iOS 客户端延后到 Mac MVP 稳定后复用核心能力建设
+> 版本：1.3
+> 日期：2026-10-01
+> 适用范围：macOS 15+ 对外 MVP；iOS 只读客户端提前插入当前计划（见
+> [REQ-004](requirements/REQ-004-ios-read-only-client.md) 与
+> [ADR-010](adr/ADR-010-ios-platform-strategy.md)），iOS 编辑、同步与写路径仍延后到
+> Mac MVP 稳定后复用核心能力建设
 
 ## 1. 文档目的
 
@@ -13,7 +16,8 @@
 [04-development-plan.md](04-development-plan.md)。主侧边栏标签导航与固定笔记列表的详细交互要求见
 [REQ-001](requirements/REQ-001-sidebar-navigation-and-note-list.md)，Bear 式笔记原位编辑的详细交互要求见
 [REQ-002](requirements/REQ-002-bear-style-inline-note-editing.md)，Bear 式所见即所得与 Obsidian 无损编辑要求见
-[REQ-003](requirements/REQ-003-source-preserving-bear-style-editing.md)。
+[REQ-003](requirements/REQ-003-source-preserving-bear-style-editing.md)，iOS 只读客户端要求见
+[REQ-004](requirements/REQ-004-ios-read-only-client.md)。
 
 ## 2. 问题陈述
 
@@ -54,7 +58,7 @@ BearObs 是一个本地优先的 macOS 原生 Obsidian Vault 客户端：
 
 | 编号 | 决策 | 结论 |
 |---|---|---|
-| D-01 | 版本分层 | Mac 内部 P0 为本地只读纵切；Mac 技术预览支持 WebDAV 拉取；Mac 对外 MVP 支持编辑现有笔记、上传和冲突保护；iOS 客户端后置 |
+| D-01 | 版本分层 | Mac 内部 P0 为本地只读纵切；Mac 技术预览支持 WebDAV 拉取；Mac 对外 MVP 支持编辑现有笔记、上传和冲突保护；iOS 只读客户端（本地文件夹来源，见 REQ-004）提前插入当前计划，iOS 写路径与同步仍后置 |
 | D-02 | 收藏 | MVP 仅保存在本机 App 沙箱，不写入 Vault |
 | D-03 | 冲突 | 保留本地与远端双方，禁止静默覆盖，由用户显式解决 |
 | D-04 | WebDAV 安全 | 只允许 HTTPS 和系统信任证书；不支持明文 HTTP 或跳过证书验证 |
@@ -125,6 +129,15 @@ P0 不对外发布，不代表完整产品承诺。
 - 冲突列表和显式解决；
 - 发布所需的安全、性能、可访问性和隐私基线。
 
+### 7.4 iOS 只读客户端（插队纵切）
+
+与 Mac MVP 并行插入的只读纵切，详细要求见 [REQ-004](requirements/REQ-004-ios-read-only-client.md)：
+
+- 内容来源为用户通过文件选择器选择的本地或 iCloud Drive Vault 文件夹，不含 WebDAV；
+- 复用 Mac 已验证的列表、最近、收藏、标签、搜索、阅读和 Wiki Link 能力；
+- iPhone 紧凑导航与 iPad 三栏；
+- 不含编辑、上传、同步和任何写路径。
+
 ## 8. 用户故事
 
 1. 作为已有 Vault 的用户，我希望连接 WebDAV 目录，以便不迁移内容就开始使用。
@@ -157,6 +170,7 @@ P0 不对外发布，不代表完整产品承诺。
 28. 作为用户，我希望后台同步失败不影响本地保存，以便系统调度不会阻塞记录。
 29. 作为使用标签查找笔记的用户，我希望直接在最左侧主侧边栏选择标签，并让次左侧栏始终显示匹配的笔记列表，以便无需在标签页和笔记列表之间往返。
 30. 作为编辑者，我希望点击编辑后直接在当前笔记显示栏中修改内容，以便不离开阅读上下文，也不被独立编辑框打断。
+31. 作为希望在 iPhone/iPad 上查阅知识库的用户，我希望选择 Vault 文件夹后离线浏览、搜索和阅读笔记，以便不在 Mac 旁也能随时查阅内容。
 
 ## 9. 功能需求
 
@@ -412,6 +426,16 @@ P0 不对外发布，不代表完整产品承诺。
 - 完成编辑后，修改结果仍在同一详情栏显示，并通过 FR-09 的本地保存流程持久化；
 - 再次打开该笔记时修改仍然存在，且未编辑的 Frontmatter、未知语法和换行约定未被无关改写。
 
+### AC-10 iOS 只读纵切
+
+给定一台 iOS 设备和包含 Frontmatter、Inline Tag、同名 Wiki Link、Unicode 路径的测试 Vault：
+
+- 用户可通过文件选择器选择 Vault 文件夹，重启后自动恢复；
+- App 可枚举、索引、搜索和阅读 Markdown，iPhone 紧凑导航与 iPad 三栏均可用；
+- Wiki Link 跳转、收藏与标签筛选行为与 Mac 一致；
+- 界面不出现任何编辑入口，整个过程不修改 Vault 中任何字节；
+- 详细场景通过 [REQ-004](requirements/REQ-004-ios-read-only-client.md) 中的验收标准。
+
 ## 12. 成功指标
 
 MVP 初期重点验证可靠性和使用闭环，而不是虚假的增长指标：
@@ -425,7 +449,7 @@ MVP 初期重点验证可靠性和使用闭环，而不是虚假的增长指标�
 
 ## 13. 明确不在 MVP 范围
 
-- iOS 客户端在 Mac MVP 之前的首发支持；
+- iOS 端编辑、WebDAV 同步和上传（iOS 只读客户端按 [REQ-004](requirements/REQ-004-ios-read-only-client.md) 提前交付，不含任何写路径）；
 - Obsidian 插件系统；
 - Dataview、Canvas 和 Graph View；
 - Block Reference 和完整 Transclusion 语义；

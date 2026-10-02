@@ -74,7 +74,10 @@
 		B0A000000000000000000188 /* ReaderFeatureModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000198 /* ReaderFeatureModelTests.swift */; };
 		FE0000000000000000000003 /* EditorFeatureModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000004 /* EditorFeatureModelTests.swift */; };
 		D7000000000000000000000E /* SourcePreservingTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7000000000000000000000D /* SourcePreservingTextViewTests.swift */; };
+		AE0000000000000000000005 /* ReaderInlineEditorRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0000000000000000000006 /* ReaderInlineEditorRenderingTests.swift */; };
 		A40000000000000000000002 /* EditorSurfaceLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* EditorSurfaceLayoutManager.swift */; };
+		AE0000000000000000000001 /* ReaderInlineEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0000000000000000000002 /* ReaderInlineEditor.swift */; };
+		AE0000000000000000000003 /* WorkspaceColumns.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0000000000000000000004 /* WorkspaceColumns.swift */; };
 E50000000000000000000002 /* ReaderViewportTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50000000000000000000001 /* ReaderViewportTracker.swift */; };
 E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50000000000000000000003 /* ReaderViewportTrackerTests.swift */; };
 		A40000000000000000000004 /* EditorSurfaceInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000003 /* EditorSurfaceInteractionTests.swift */; };
@@ -103,6 +106,98 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		D70000000000000000000005 /* MarkdownSourcePatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000015 /* MarkdownSourcePatchTests.swift */; };
 		D70000000000000000000006 /* MarkdownSourcePatchBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000016 /* MarkdownSourcePatchBuilderTests.swift */; };
 		D70000000000000000000007 /* MarkdownSourceMapParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000017 /* MarkdownSourceMapParserTests.swift */; };
+		BE0000000000000000000022 /* WorkspaceColumns.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = AE0000000000000000000004; };
+		BE0000000000000000000023 /* AppEnvironment.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000017; };
+		BE0000000000000000000024 /* LibraryFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000145; };
+		BE0000000000000000000025 /* LibraryView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000146; };
+		BE0000000000000000000026 /* TagsFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000166; };
+		BE0000000000000000000027 /* TagsView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000167; };
+		BE0000000000000000000028 /* SearchFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000180; };
+		BE0000000000000000000029 /* SearchView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000181; };
+		BE000000000000000000002A /* ReaderFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000194; };
+		BE000000000000000000002B /* EditorFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000002; };
+		BE000000000000000000002C /* LocalReaderDataSource.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000195; };
+		BE000000000000000000002D /* ReaderView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000196; };
+		BE000000000000000000002E /* ReaderViewportTracker.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = E50000000000000000000001; };
+		BE000000000000000000002F /* FavoritesFeatureModel.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000011; };
+		BE0000000000000000000030 /* FavoritesView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000012; };
+		BE0000000000000000000031 /* RecentView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000013; };
+		BE0000000000000000000032 /* VaultPath.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C4; };
+		BE0000000000000000000033 /* SyncPlanner.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C5; };
+		BE0000000000000000000034 /* AppError.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C6; };
+		BE0000000000000000000035 /* LocalVaultEnumerator.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F2; };
+		BE0000000000000000000036 /* LocalVaultStore.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000117; };
+		BE0000000000000000000037 /* FileUserStateStore.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000014; };
+		BE0000000000000000000038 /* VaultSelectionStore.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000018; };
+		BE0000000000000000000039 /* IndexSchema.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000111; };
+		BE000000000000000000003A /* IndexLibraryRepository.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000144; };
+		BE000000000000000000003B /* IndexTagRepository.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000165; };
+		BE000000000000000000003C /* IndexRepository.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000113; };
+		BE000000000000000000003D /* IncrementalIndexScanner.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000114; };
+		BE000000000000000000003E /* IndexSearchRepository.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000115; };
+		BE000000000000000000003F /* IndexCJKSearchText.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000116; };
+		BE0000000000000000000040 /* IndexWikiLinkRepository.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000019C; };
+		BE0000000000000000000041 /* FrontmatterParser.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F4; };
+		BE0000000000000000000042 /* MarkdownASTParser.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F6; };
+		BE0000000000000000000043 /* ObsidianSyntaxModels.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000FC; };
+		BE0000000000000000000044 /* ObsidianSyntaxScanner.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F8; };
+		BE0000000000000000000045 /* MarkdownNoteModels.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000FA; };
+		BE0000000000000000000046 /* MarkdownNoteParser.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F9; };
+		BE0000000000000000000047 /* MarkdownReaderRenderer.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000193; };
+		BE0000000000000000000048 /* MarkdownEditableDocument.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000011; };
+		BE0000000000000000000049 /* MarkdownSourcePatch.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000012; };
+		BE000000000000000000004A /* MarkdownSourcePatchBuilder.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000013; };
+		BE000000000000000000004B /* MarkdownSourceMapParser.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000014; };
+		BE000000000000000000004C /* MarkdownEditorProjectionBuilder.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D7000000000000000000001B; };
+		BE000000000000000000004D /* MarkdownTextCoordinateMap.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000018; };
+		BE0000000000000000000007 /* BearObsIOSApp.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000003; };
+		BE0000000000000000000008 /* IOSWorkspaceView.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000004; };
+		BE0000000000000000000009 /* BearObsIOSUITests.swift in iOS UI Sources */ = {isa = PBXBuildFile; fileRef = BE0000000000000000000005; };
+		BE000000000000000000000A /* Yams in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000D; };
+		BE000000000000000000000B /* Markdown in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000E; };
+		BE000000000000000000000C /* GRDB in iOS Frameworks */ = {isa = PBXBuildFile; productRef = BE000000000000000000000F; };
+		BE0000000000000000000202 /* LibraryFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000148; };
+		BE0000000000000000000203 /* TagsFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000169; };
+		BE0000000000000000000204 /* SearchFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000182; };
+		BE0000000000000000000205 /* ReaderFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000198; };
+		BE0000000000000000000206 /* EditorFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = FE0000000000000000000004; };
+		BE0000000000000000000207 /* ReaderViewportTrackerTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = E50000000000000000000003; };
+		BE0000000000000000000208 /* ReaderViewRenderingTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000019B; };
+		BE0000000000000000000209 /* FavoritesFeatureModelTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000015; };
+		BE000000000000000000020A /* GoldenVaultContractTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001E; };
+		BE000000000000000000020B /* WebDAVFixtureContractTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000020; };
+		BE000000000000000000020C /* ControlledWebDAVFixture.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000A1; };
+		BE000000000000000000020D /* VaultPathTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C1; };
+		BE000000000000000000020E /* SyncPlannerTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C2; };
+		BE000000000000000000020F /* AppErrorTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000C3; };
+		BE0000000000000000000210 /* LocalVaultEnumeratorTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F1; };
+		BE0000000000000000000211 /* LocalVaultStoreTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000011D; };
+		BE0000000000000000000212 /* FileUserStateStoreTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000016; };
+		BE0000000000000000000213 /* VaultSelectionStoreTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = C60000000000000000000019; };
+		BE0000000000000000000214 /* WorkspaceSectionTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = C6000000000000000000001A; };
+		BE0000000000000000000215 /* IndexSchemaTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000112; };
+		BE0000000000000000000216 /* IndexLibraryRepositoryTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000147; };
+		BE0000000000000000000217 /* IndexTagRepositoryTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000168; };
+		BE0000000000000000000218 /* IndexRepositoryTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000118; };
+		BE0000000000000000000219 /* IncrementalIndexScannerTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000119; };
+		BE000000000000000000021A /* IndexSearchRepositoryTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000011A; };
+		BE000000000000000000021B /* FullIndexRebuildTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000011B; };
+		BE000000000000000000021C /* ChineseSearchQualityTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000011C; };
+		BE000000000000000000021D /* IndexWikiLinkRepositoryTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000019D; };
+		BE000000000000000000021E /* FrontmatterParserTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F3; };
+		BE000000000000000000021F /* MarkdownASTParserTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F5; };
+		BE0000000000000000000220 /* ObsidianSyntaxScannerTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000F7; };
+		BE0000000000000000000221 /* MarkdownNoteParserTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000FB; };
+		BE0000000000000000000222 /* MarkdownReaderRendererTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = B0A000000000000000000197; };
+		BE0000000000000000000223 /* MarkdownSourcePatchTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000015; };
+		BE0000000000000000000224 /* MarkdownSourcePatchBuilderTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000016; };
+		BE0000000000000000000225 /* MarkdownSourceMapParserTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000017; };
+		BE0000000000000000000226 /* MarkdownEditorProjectionBuilderTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = D7000000000000000000001C; };
+		BE0000000000000000000227 /* MarkdownTextCoordinateMapTests.swift in iOS Unit Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000019; };
+		BE0000000000000000000228 /* GoldenVault in iOS Unit Resources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000001F; };
+		BE0000000000000000000229 /* WebDAV in iOS Unit Resources */ = {isa = PBXBuildFile; fileRef = B0A0000000000000000000A2; };
+		BE000000000000000000022A /* ChineseSearchVault in iOS Unit Resources */ = {isa = PBXBuildFile; fileRef = B0A00000000000000000011E; };
+		BE00000000000000000001F6 /* GRDB in iOS Unit Frameworks */ = {isa = PBXBuildFile; productRef = BE00000000000000000001F7; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +215,22 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			remoteGlobalIDString = B0A000000000000000000040;
 			remoteInfo = BearObs;
 		};
+		BE000000000000000000001E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B0A000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BE0000000000000000000016;
+			remoteInfo = BearObsIOS;
+		};
+		BE000000000000000000001F /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = BE0000000000000000000016 /* BearObsIOS */; targetProxy = BE000000000000000000001E /* PBXContainerItemProxy */; };
+		BE00000000000000000001FF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B0A000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BE0000000000000000000016;
+			remoteInfo = BearObsIOS;
+		};
+		BE0000000000000000000200 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = BE0000000000000000000016 /* BearObsIOS */; targetProxy = BE00000000000000000001FF /* PBXContainerItemProxy */; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -196,6 +307,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		B0A000000000000000000198 /* ReaderFeatureModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderFeatureModelTests.swift; sourceTree = "<group>"; };
 		FE0000000000000000000004 /* EditorFeatureModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorFeatureModelTests.swift; sourceTree = "<group>"; };
 		D7000000000000000000000D /* SourcePreservingTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePreservingTextViewTests.swift; sourceTree = "<group>"; };
+		AE0000000000000000000006 /* ReaderInlineEditorRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderInlineEditorRenderingTests.swift; sourceTree = "<group>"; };
 		A40000000000000000000003 /* EditorSurfaceInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSurfaceInteractionTests.swift; sourceTree = "<group>"; };
 		B0A00000000000000000019B /* ReaderViewRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewRenderingTests.swift; sourceTree = "<group>"; };
 		B0A00000000000000000019C /* IndexWikiLinkRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexWikiLinkRepository.swift; sourceTree = "<group>"; };
@@ -221,16 +333,28 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		D70000000000000000000019 /* MarkdownTextCoordinateMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextCoordinateMapTests.swift; sourceTree = "<group>"; };
 		D7000000000000000000001A /* SourcePreservingTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePreservingTextView.swift; sourceTree = "<group>"; };
 		A40000000000000000000001 /* EditorSurfaceLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSurfaceLayoutManager.swift; sourceTree = "<group>"; };
+		AE0000000000000000000002 /* ReaderInlineEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderInlineEditor.swift; sourceTree = "<group>"; };
+		AE0000000000000000000004 /* WorkspaceColumns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceColumns.swift; sourceTree = "<group>"; };
 	E50000000000000000000001 /* ReaderViewportTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewportTracker.swift; sourceTree = "<group>"; };
 	E50000000000000000000003 /* ReaderViewportTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewportTrackerTests.swift; sourceTree = "<group>"; };
 		D7000000000000000000001B /* MarkdownEditorProjectionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorProjectionBuilder.swift; sourceTree = "<group>"; };
 		D7000000000000000000001C /* MarkdownEditorProjectionBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditorProjectionBuilderTests.swift; sourceTree = "<group>"; };
+		BE0000000000000000000001 /* BearObsIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BearObsIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE0000000000000000000002 /* BearObsIOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BearObsIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE0000000000000000000003 /* BearObsIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsIOSApp.swift; sourceTree = "<group>"; };
+		BE0000000000000000000004 /* IOSWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSWorkspaceView.swift; sourceTree = "<group>"; };
+		BE0000000000000000000005 /* BearObsIOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BearObsIOSUITests.swift; sourceTree = "<group>"; };
+		BE0000000000000000000006 /* App-iOS.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = App-iOS.xcconfig; sourceTree = "<group>"; };
+		BE00000000000000000001F5 /* BearObsIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BearObsIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		B0A000000000000000000050 /* App Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (B0A0000000000000000000E5 /* Yams in Frameworks */, B0A0000000000000000000E8 /* Markdown in Frameworks */, B0A000000000000000000103 /* GRDB in App Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000051 /* Unit Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000104 /* GRDB in Unit Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000052 /* UI Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000011 /* iOS Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (BE000000000000000000000A /* Yams in iOS Frameworks */, BE000000000000000000000B /* Markdown in iOS Frameworks */, BE000000000000000000000C /* GRDB in iOS Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000014 /* iOS UI Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE00000000000000000001F9 /* iOS Unit Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (BE00000000000000000001F6 /* GRDB in iOS Unit Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -240,6 +364,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 				B0A000000000000000000031 /* BearObs */,
 				B0A000000000000000000032 /* BearObsTests */,
 				B0A000000000000000000033 /* BearObsUITests */,
+				BE0000000000000000000021 /* BearObsIOSUITests */,
 				B0A000000000000000000034 /* Config */,
 				B0A000000000000000000017 /* BearObs.xctestplan */,
 				B0A000000000000000000035 /* Products */,
@@ -263,7 +388,9 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			children = (
 				B0A000000000000000000011 /* BearObsApp.swift */,
 				B0A000000000000000000012 /* ProjectShellView.swift */,
+				AE0000000000000000000004 /* WorkspaceColumns.swift */,
 				C60000000000000000000017 /* AppEnvironment.swift */,
+				BE0000000000000000000020 /* iOS */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -415,6 +542,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 				FE0000000000000000000002 /* EditorFeatureModel.swift */,
 				B0A000000000000000000195 /* LocalReaderDataSource.swift */,
 				B0A000000000000000000196 /* ReaderView.swift */,
+				AE0000000000000000000002 /* ReaderInlineEditor.swift */,
 				D7000000000000000000001A /* SourcePreservingTextView.swift */,
 				A40000000000000000000001 /* EditorSurfaceLayoutManager.swift */,
 				E50000000000000000000001 /* ReaderViewportTracker.swift */,
@@ -442,6 +570,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 				B0A000000000000000000198 /* ReaderFeatureModelTests.swift */,
 				FE0000000000000000000004 /* EditorFeatureModelTests.swift */,
 				D7000000000000000000000D /* SourcePreservingTextViewTests.swift */,
+				AE0000000000000000000006 /* ReaderInlineEditorRenderingTests.swift */,
 				A40000000000000000000003 /* EditorSurfaceInteractionTests.swift */,
 				E50000000000000000000003 /* ReaderViewportTrackerTests.swift */,
 				B0A00000000000000000019B /* ReaderViewRenderingTests.swift */,
@@ -591,6 +720,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 				B0A000000000000000000018 /* Debug.xcconfig */,
 				B0A000000000000000000019 /* Release.xcconfig */,
 				B0A00000000000000000001A /* App.xcconfig */,
+				BE0000000000000000000006 /* App-iOS.xcconfig */,
 				B0A00000000000000000001B /* Tests.xcconfig */,
 				B0A00000000000000000001D /* Secrets.example.xcconfig */,
 			);
@@ -603,10 +733,23 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 				B0A000000000000000000010 /* BearObs.app */,
 				B0A000000000000000000015 /* BearObsTests.xctest */,
 				B0A000000000000000000016 /* BearObsUITests.xctest */,
+				BE0000000000000000000001 /* BearObsIOS.app */,
+				BE0000000000000000000002 /* BearObsIOSUITests.xctest */,
+				BE00000000000000000001F5 /* BearObsIOSTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
+		BE0000000000000000000020 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				BE0000000000000000000003 /* BearObsIOSApp.swift */,
+				BE0000000000000000000004 /* IOSWorkspaceView.swift */,
+			);
+			path = iOS;
+			sourceTree = "<group>";
+		};
+		BE0000000000000000000021 /* BearObsIOSUITests */ = {isa = PBXGroup; children = (BE0000000000000000000005 /* BearObsIOSUITests.swift */); path = BearObsIOSUITests; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -651,6 +794,41 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			productReference = B0A000000000000000000016 /* BearObsUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		BE0000000000000000000016 /* BearObsIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BE0000000000000000000018 /* iOS App configurations */;
+			buildPhases = (BE0000000000000000000010 /* iOS Sources */, BE0000000000000000000011 /* iOS Frameworks */, BE0000000000000000000012 /* iOS Resources */);
+			buildRules = ();
+			dependencies = ();
+			name = BearObsIOS;
+			packageProductDependencies = (BE000000000000000000000D /* Yams */, BE000000000000000000000E /* Markdown */, BE000000000000000000000F /* GRDB */);
+			productName = BearObsIOS;
+			productReference = BE0000000000000000000001 /* BearObsIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BE0000000000000000000017 /* BearObsIOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BE000000000000000000001B /* iOS UI configurations */;
+			buildPhases = (BE0000000000000000000013 /* iOS UI Sources */, BE0000000000000000000014 /* iOS UI Frameworks */, BE0000000000000000000015 /* iOS UI Resources */);
+			buildRules = ();
+			dependencies = (BE000000000000000000001F /* PBXTargetDependency */);
+			name = BearObsIOSUITests;
+			productName = BearObsIOSUITests;
+			productReference = BE0000000000000000000002 /* BearObsIOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		BE00000000000000000001FB /* BearObsIOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BE00000000000000000001FC /* iOS Unit configurations */;
+			buildPhases = (BE00000000000000000001F8 /* iOS Unit Sources */, BE00000000000000000001F9 /* iOS Unit Frameworks */, BE00000000000000000001FA /* iOS Unit Resources */);
+			buildRules = ();
+			dependencies = (BE0000000000000000000200 /* PBXTargetDependency */);
+			name = BearObsIOSTests;
+			packageProductDependencies = (BE00000000000000000001F7 /* GRDB */);
+			productName = BearObsIOSTests;
+			productReference = BE00000000000000000001F5 /* BearObsIOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -664,6 +842,9 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 					B0A000000000000000000040 = {CreatedOnToolsVersion = 26.5; };
 					B0A000000000000000000041 = {CreatedOnToolsVersion = 26.5; TestTargetID = B0A000000000000000000040; };
 					B0A000000000000000000042 = {CreatedOnToolsVersion = 26.5; TestTargetID = B0A000000000000000000040; };
+					BE0000000000000000000016 = {CreatedOnToolsVersion = 26.5; };
+					BE0000000000000000000017 = {CreatedOnToolsVersion = 26.5; TestTargetID = BE0000000000000000000016; };
+					BE00000000000000000001FB = {CreatedOnToolsVersion = 26.5; TestTargetID = BE0000000000000000000016; };
 				};
 			};
 			buildConfigurationList = B0A000000000000000000093 /* Project configurations */;
@@ -680,7 +861,7 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			productRefGroup = B0A000000000000000000035 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (B0A000000000000000000040 /* BearObs */, B0A000000000000000000041 /* BearObsTests */, B0A000000000000000000042 /* BearObsUITests */);
+			targets = (B0A000000000000000000040 /* BearObs */, B0A000000000000000000041 /* BearObsTests */, B0A000000000000000000042 /* BearObsUITests */, BE0000000000000000000016 /* BearObsIOS */, BE0000000000000000000017 /* BearObsIOSUITests */, BE00000000000000000001FB /* BearObsIOSTests */);
 		};
 /* End PBXProject section */
 
@@ -688,12 +869,18 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		B0A000000000000000000063 /* App Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000064 /* Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000006 /* GoldenVault in Resources */, B0A000000000000000000009 /* WebDAV in Resources */, B0A000000000000000000110 /* ChineseSearchVault in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000065 /* UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000012 /* iOS Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000015 /* iOS UI Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BE00000000000000000001FA /* iOS Unit Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (BE0000000000000000000228 /* GoldenVault in iOS Unit Resources */, BE0000000000000000000229 /* WebDAV in iOS Unit Resources */, BE000000000000000000022A /* ChineseSearchVault in iOS Unit Resources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */, C60000000000000000000007 /* AppEnvironment.swift in Sources */, B0A000000000000000000135 /* LibraryFeatureModel.swift in Sources */, B0A000000000000000000136 /* LibraryView.swift in Sources */, B0A000000000000000000156 /* TagsFeatureModel.swift in Sources */, B0A000000000000000000157 /* TagsView.swift in Sources */, B0A000000000000000000170 /* SearchFeatureModel.swift in Sources */, B0A000000000000000000171 /* SearchView.swift in Sources */, B0A000000000000000000184 /* ReaderFeatureModel.swift in Sources */, FE0000000000000000000001 /* EditorFeatureModel.swift in Sources */, B0A000000000000000000185 /* LocalReaderDataSource.swift in Sources */, B0A000000000000000000186 /* ReaderView.swift in Sources */, D7000000000000000000000A /* SourcePreservingTextView.swift in Sources */, A40000000000000000000002 /* EditorSurfaceLayoutManager.swift in Sources */, E50000000000000000000002 /* ReaderViewportTracker.swift in Sources */, C60000000000000000000001 /* FavoritesFeatureModel.swift in Sources */, C60000000000000000000002 /* FavoritesView.swift in Sources */, C60000000000000000000003 /* RecentView.swift in Sources */, B0A0000000000000000000B4 /* VaultPath.swift in Sources */, B0A0000000000000000000B5 /* SyncPlanner.swift in Sources */, B0A0000000000000000000B6 /* AppError.swift in Sources */, B0A0000000000000000000E2 /* LocalVaultEnumerator.swift in Sources */, B0A000000000000000000109 /* LocalVaultStore.swift in Sources */, C60000000000000000000004 /* FileUserStateStore.swift in Sources */, C60000000000000000000008 /* VaultSelectionStore.swift in Sources */, B0A000000000000000000101 /* IndexSchema.swift in Sources */, B0A000000000000000000134 /* IndexLibraryRepository.swift in Sources */, B0A000000000000000000155 /* IndexTagRepository.swift in Sources */, B0A000000000000000000105 /* IndexRepository.swift in Sources */, B0A000000000000000000106 /* IncrementalIndexScanner.swift in Sources */, B0A000000000000000000107 /* IndexSearchRepository.swift in Sources */, B0A000000000000000000108 /* IndexCJKSearchText.swift in Sources */, B0A00000000000000000018A /* IndexWikiLinkRepository.swift in Sources */, B0A0000000000000000000E4 /* FrontmatterParser.swift in Sources */, B0A0000000000000000000E7 /* MarkdownASTParser.swift in Sources */, B0A0000000000000000000EE /* ObsidianSyntaxModels.swift in Sources */, B0A0000000000000000000EA /* ObsidianSyntaxScanner.swift in Sources */, B0A0000000000000000000EC /* MarkdownNoteModels.swift in Sources */, B0A0000000000000000000EB /* MarkdownNoteParser.swift in Sources */, B0A000000000000000000183 /* MarkdownReaderRenderer.swift in Sources */, D70000000000000000000001 /* MarkdownEditableDocument.swift in Sources */, D70000000000000000000002 /* MarkdownSourcePatch.swift in Sources */, D70000000000000000000003 /* MarkdownSourcePatchBuilder.swift in Sources */, D70000000000000000000004 /* MarkdownSourceMapParser.swift in Sources */, D7000000000000000000000B /* MarkdownEditorProjectionBuilder.swift in Sources */, D70000000000000000000008 /* MarkdownTextCoordinateMap.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
-		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000138 /* LibraryFeatureModelTests.swift in Sources */, B0A000000000000000000159 /* TagsFeatureModelTests.swift in Sources */, B0A000000000000000000172 /* SearchFeatureModelTests.swift in Sources */, B0A000000000000000000188 /* ReaderFeatureModelTests.swift in Sources */, FE0000000000000000000003 /* EditorFeatureModelTests.swift in Sources */, D7000000000000000000000E /* SourcePreservingTextViewTests.swift in Sources */, A40000000000000000000004 /* EditorSurfaceInteractionTests.swift in Sources */, E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */, B0A000000000000000000189 /* ReaderViewRenderingTests.swift in Sources */, C60000000000000000000005 /* FavoritesFeatureModelTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */, B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */, B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */, B0A0000000000000000000B1 /* VaultPathTests.swift in Sources */, B0A0000000000000000000B2 /* SyncPlannerTests.swift in Sources */, B0A0000000000000000000B3 /* AppErrorTests.swift in Sources */, B0A0000000000000000000E1 /* LocalVaultEnumeratorTests.swift in Sources */, B0A00000000000000000010F /* LocalVaultStoreTests.swift in Sources */, C60000000000000000000006 /* FileUserStateStoreTests.swift in Sources */, C60000000000000000000009 /* VaultSelectionStoreTests.swift in Sources */, C6000000000000000000000A /* WorkspaceSectionTests.swift in Sources */, B0A000000000000000000102 /* IndexSchemaTests.swift in Sources */, B0A000000000000000000137 /* IndexLibraryRepositoryTests.swift in Sources */, B0A000000000000000000158 /* IndexTagRepositoryTests.swift in Sources */, B0A00000000000000000010A /* IndexRepositoryTests.swift in Sources */, B0A00000000000000000010B /* IncrementalIndexScannerTests.swift in Sources */, B0A00000000000000000010C /* IndexSearchRepositoryTests.swift in Sources */, B0A00000000000000000010D /* FullIndexRebuildTests.swift in Sources */, B0A00000000000000000010E /* ChineseSearchQualityTests.swift in Sources */, B0A00000000000000000018B /* IndexWikiLinkRepositoryTests.swift in Sources */, B0A0000000000000000000E3 /* FrontmatterParserTests.swift in Sources */, B0A0000000000000000000E6 /* MarkdownASTParserTests.swift in Sources */, B0A0000000000000000000E9 /* ObsidianSyntaxScannerTests.swift in Sources */, B0A0000000000000000000ED /* MarkdownNoteParserTests.swift in Sources */, B0A000000000000000000187 /* MarkdownReaderRendererTests.swift in Sources */, D70000000000000000000005 /* MarkdownSourcePatchTests.swift in Sources */, D70000000000000000000006 /* MarkdownSourcePatchBuilderTests.swift in Sources */, D70000000000000000000007 /* MarkdownSourceMapParserTests.swift in Sources */, D7000000000000000000000C /* MarkdownEditorProjectionBuilderTests.swift in Sources */, D70000000000000000000009 /* MarkdownTextCoordinateMapTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000060 /* App Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000001 /* BearObsApp.swift in Sources */, B0A000000000000000000002 /* ProjectShellView.swift in Sources */, AE0000000000000000000003 /* WorkspaceColumns.swift in Sources */, C60000000000000000000007 /* AppEnvironment.swift in Sources */, B0A000000000000000000135 /* LibraryFeatureModel.swift in Sources */, B0A000000000000000000136 /* LibraryView.swift in Sources */, B0A000000000000000000156 /* TagsFeatureModel.swift in Sources */, B0A000000000000000000157 /* TagsView.swift in Sources */, B0A000000000000000000170 /* SearchFeatureModel.swift in Sources */, B0A000000000000000000171 /* SearchView.swift in Sources */, B0A000000000000000000184 /* ReaderFeatureModel.swift in Sources */, FE0000000000000000000001 /* EditorFeatureModel.swift in Sources */, B0A000000000000000000185 /* LocalReaderDataSource.swift in Sources */, B0A000000000000000000186 /* ReaderView.swift in Sources */, AE0000000000000000000001 /* ReaderInlineEditor.swift in Sources */, D7000000000000000000000A /* SourcePreservingTextView.swift in Sources */, A40000000000000000000002 /* EditorSurfaceLayoutManager.swift in Sources */, E50000000000000000000002 /* ReaderViewportTracker.swift in Sources */, C60000000000000000000001 /* FavoritesFeatureModel.swift in Sources */, C60000000000000000000002 /* FavoritesView.swift in Sources */, C60000000000000000000003 /* RecentView.swift in Sources */, B0A0000000000000000000B4 /* VaultPath.swift in Sources */, B0A0000000000000000000B5 /* SyncPlanner.swift in Sources */, B0A0000000000000000000B6 /* AppError.swift in Sources */, B0A0000000000000000000E2 /* LocalVaultEnumerator.swift in Sources */, B0A000000000000000000109 /* LocalVaultStore.swift in Sources */, C60000000000000000000004 /* FileUserStateStore.swift in Sources */, C60000000000000000000008 /* VaultSelectionStore.swift in Sources */, B0A000000000000000000101 /* IndexSchema.swift in Sources */, B0A000000000000000000134 /* IndexLibraryRepository.swift in Sources */, B0A000000000000000000155 /* IndexTagRepository.swift in Sources */, B0A000000000000000000105 /* IndexRepository.swift in Sources */, B0A000000000000000000106 /* IncrementalIndexScanner.swift in Sources */, B0A000000000000000000107 /* IndexSearchRepository.swift in Sources */, B0A000000000000000000108 /* IndexCJKSearchText.swift in Sources */, B0A00000000000000000018A /* IndexWikiLinkRepository.swift in Sources */, B0A0000000000000000000E4 /* FrontmatterParser.swift in Sources */, B0A0000000000000000000E7 /* MarkdownASTParser.swift in Sources */, B0A0000000000000000000EE /* ObsidianSyntaxModels.swift in Sources */, B0A0000000000000000000EA /* ObsidianSyntaxScanner.swift in Sources */, B0A0000000000000000000EC /* MarkdownNoteModels.swift in Sources */, B0A0000000000000000000EB /* MarkdownNoteParser.swift in Sources */, B0A000000000000000000183 /* MarkdownReaderRenderer.swift in Sources */, D70000000000000000000001 /* MarkdownEditableDocument.swift in Sources */, D70000000000000000000002 /* MarkdownSourcePatch.swift in Sources */, D70000000000000000000003 /* MarkdownSourcePatchBuilder.swift in Sources */, D70000000000000000000004 /* MarkdownSourceMapParser.swift in Sources */, D7000000000000000000000B /* MarkdownEditorProjectionBuilder.swift in Sources */, D70000000000000000000008 /* MarkdownTextCoordinateMap.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		B0A000000000000000000061 /* Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000003 /* BearObsTests.swift in Sources */, B0A000000000000000000138 /* LibraryFeatureModelTests.swift in Sources */, B0A000000000000000000159 /* TagsFeatureModelTests.swift in Sources */, B0A000000000000000000172 /* SearchFeatureModelTests.swift in Sources */, B0A000000000000000000188 /* ReaderFeatureModelTests.swift in Sources */, FE0000000000000000000003 /* EditorFeatureModelTests.swift in Sources */, D7000000000000000000000E /* SourcePreservingTextViewTests.swift in Sources */, AE0000000000000000000005 /* ReaderInlineEditorRenderingTests.swift in Sources */, A40000000000000000000004 /* EditorSurfaceInteractionTests.swift in Sources */, E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */, B0A000000000000000000189 /* ReaderViewRenderingTests.swift in Sources */, C60000000000000000000005 /* FavoritesFeatureModelTests.swift in Sources */, B0A000000000000000000005 /* GoldenVaultContractTests.swift in Sources */, B0A000000000000000000007 /* WebDAVFixtureContractTests.swift in Sources */, B0A000000000000000000008 /* ControlledWebDAVFixture.swift in Sources */, B0A0000000000000000000B1 /* VaultPathTests.swift in Sources */, B0A0000000000000000000B2 /* SyncPlannerTests.swift in Sources */, B0A0000000000000000000B3 /* AppErrorTests.swift in Sources */, B0A0000000000000000000E1 /* LocalVaultEnumeratorTests.swift in Sources */, B0A00000000000000000010F /* LocalVaultStoreTests.swift in Sources */, C60000000000000000000006 /* FileUserStateStoreTests.swift in Sources */, C60000000000000000000009 /* VaultSelectionStoreTests.swift in Sources */, C6000000000000000000000A /* WorkspaceSectionTests.swift in Sources */, B0A000000000000000000102 /* IndexSchemaTests.swift in Sources */, B0A000000000000000000137 /* IndexLibraryRepositoryTests.swift in Sources */, B0A000000000000000000158 /* IndexTagRepositoryTests.swift in Sources */, B0A00000000000000000010A /* IndexRepositoryTests.swift in Sources */, B0A00000000000000000010B /* IncrementalIndexScannerTests.swift in Sources */, B0A00000000000000000010C /* IndexSearchRepositoryTests.swift in Sources */, B0A00000000000000000010D /* FullIndexRebuildTests.swift in Sources */, B0A00000000000000000010E /* ChineseSearchQualityTests.swift in Sources */, B0A00000000000000000018B /* IndexWikiLinkRepositoryTests.swift in Sources */, B0A0000000000000000000E3 /* FrontmatterParserTests.swift in Sources */, B0A0000000000000000000E6 /* MarkdownASTParserTests.swift in Sources */, B0A0000000000000000000E9 /* ObsidianSyntaxScannerTests.swift in Sources */, B0A0000000000000000000ED /* MarkdownNoteParserTests.swift in Sources */, B0A000000000000000000187 /* MarkdownReaderRendererTests.swift in Sources */, D70000000000000000000005 /* MarkdownSourcePatchTests.swift in Sources */, D70000000000000000000006 /* MarkdownSourcePatchBuilderTests.swift in Sources */, D70000000000000000000007 /* MarkdownSourceMapParserTests.swift in Sources */, D7000000000000000000000C /* MarkdownEditorProjectionBuilderTests.swift in Sources */, D70000000000000000000009 /* MarkdownTextCoordinateMapTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 		B0A000000000000000000062 /* UI Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0A000000000000000000004 /* BearObsUITests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000010 /* iOS Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (BE0000000000000000000022 /* WorkspaceColumns.swift in iOS Sources */, BE0000000000000000000023 /* AppEnvironment.swift in iOS Sources */, BE0000000000000000000024 /* LibraryFeatureModel.swift in iOS Sources */, BE0000000000000000000025 /* LibraryView.swift in iOS Sources */, BE0000000000000000000026 /* TagsFeatureModel.swift in iOS Sources */, BE0000000000000000000027 /* TagsView.swift in iOS Sources */, BE0000000000000000000028 /* SearchFeatureModel.swift in iOS Sources */, BE0000000000000000000029 /* SearchView.swift in iOS Sources */, BE000000000000000000002A /* ReaderFeatureModel.swift in iOS Sources */, BE000000000000000000002B /* EditorFeatureModel.swift in iOS Sources */, BE000000000000000000002C /* LocalReaderDataSource.swift in iOS Sources */, BE000000000000000000002D /* ReaderView.swift in iOS Sources */, BE000000000000000000002E /* ReaderViewportTracker.swift in iOS Sources */, BE000000000000000000002F /* FavoritesFeatureModel.swift in iOS Sources */, BE0000000000000000000030 /* FavoritesView.swift in iOS Sources */, BE0000000000000000000031 /* RecentView.swift in iOS Sources */, BE0000000000000000000032 /* VaultPath.swift in iOS Sources */, BE0000000000000000000033 /* SyncPlanner.swift in iOS Sources */, BE0000000000000000000034 /* AppError.swift in iOS Sources */, BE0000000000000000000035 /* LocalVaultEnumerator.swift in iOS Sources */, BE0000000000000000000036 /* LocalVaultStore.swift in iOS Sources */, BE0000000000000000000037 /* FileUserStateStore.swift in iOS Sources */, BE0000000000000000000038 /* VaultSelectionStore.swift in iOS Sources */, BE0000000000000000000039 /* IndexSchema.swift in iOS Sources */, BE000000000000000000003A /* IndexLibraryRepository.swift in iOS Sources */, BE000000000000000000003B /* IndexTagRepository.swift in iOS Sources */, BE000000000000000000003C /* IndexRepository.swift in iOS Sources */, BE000000000000000000003D /* IncrementalIndexScanner.swift in iOS Sources */, BE000000000000000000003E /* IndexSearchRepository.swift in iOS Sources */, BE000000000000000000003F /* IndexCJKSearchText.swift in iOS Sources */, BE0000000000000000000040 /* IndexWikiLinkRepository.swift in iOS Sources */, BE0000000000000000000041 /* FrontmatterParser.swift in iOS Sources */, BE0000000000000000000042 /* MarkdownASTParser.swift in iOS Sources */, BE0000000000000000000043 /* ObsidianSyntaxModels.swift in iOS Sources */, BE0000000000000000000044 /* ObsidianSyntaxScanner.swift in iOS Sources */, BE0000000000000000000045 /* MarkdownNoteModels.swift in iOS Sources */, BE0000000000000000000046 /* MarkdownNoteParser.swift in iOS Sources */, BE0000000000000000000047 /* MarkdownReaderRenderer.swift in iOS Sources */, BE0000000000000000000048 /* MarkdownEditableDocument.swift in iOS Sources */, BE0000000000000000000049 /* MarkdownSourcePatch.swift in iOS Sources */, BE000000000000000000004A /* MarkdownSourcePatchBuilder.swift in iOS Sources */, BE000000000000000000004B /* MarkdownSourceMapParser.swift in iOS Sources */, BE000000000000000000004C /* MarkdownEditorProjectionBuilder.swift in iOS Sources */, BE000000000000000000004D /* MarkdownTextCoordinateMap.swift in iOS Sources */, BE0000000000000000000007 /* BearObsIOSApp.swift in iOS Sources */, BE0000000000000000000008 /* IOSWorkspaceView.swift in iOS Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		BE0000000000000000000013 /* iOS UI Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (BE0000000000000000000009 /* BearObsIOSUITests.swift in iOS UI Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		BE00000000000000000001F8 /* iOS Unit Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (BE0000000000000000000202 /* LibraryFeatureModelTests.swift in iOS Unit Sources */, BE0000000000000000000203 /* TagsFeatureModelTests.swift in iOS Unit Sources */, BE0000000000000000000204 /* SearchFeatureModelTests.swift in iOS Unit Sources */, BE0000000000000000000205 /* ReaderFeatureModelTests.swift in iOS Unit Sources */, BE0000000000000000000206 /* EditorFeatureModelTests.swift in iOS Unit Sources */, BE0000000000000000000207 /* ReaderViewportTrackerTests.swift in iOS Unit Sources */, BE0000000000000000000208 /* ReaderViewRenderingTests.swift in iOS Unit Sources */, BE0000000000000000000209 /* FavoritesFeatureModelTests.swift in iOS Unit Sources */, BE000000000000000000020A /* GoldenVaultContractTests.swift in iOS Unit Sources */, BE000000000000000000020B /* WebDAVFixtureContractTests.swift in iOS Unit Sources */, BE000000000000000000020C /* ControlledWebDAVFixture.swift in iOS Unit Sources */, BE000000000000000000020D /* VaultPathTests.swift in iOS Unit Sources */, BE000000000000000000020E /* SyncPlannerTests.swift in iOS Unit Sources */, BE000000000000000000020F /* AppErrorTests.swift in iOS Unit Sources */, BE0000000000000000000210 /* LocalVaultEnumeratorTests.swift in iOS Unit Sources */, BE0000000000000000000211 /* LocalVaultStoreTests.swift in iOS Unit Sources */, BE0000000000000000000212 /* FileUserStateStoreTests.swift in iOS Unit Sources */, BE0000000000000000000213 /* VaultSelectionStoreTests.swift in iOS Unit Sources */, BE0000000000000000000214 /* WorkspaceSectionTests.swift in iOS Unit Sources */, BE0000000000000000000215 /* IndexSchemaTests.swift in iOS Unit Sources */, BE0000000000000000000216 /* IndexLibraryRepositoryTests.swift in iOS Unit Sources */, BE0000000000000000000217 /* IndexTagRepositoryTests.swift in iOS Unit Sources */, BE0000000000000000000218 /* IndexRepositoryTests.swift in iOS Unit Sources */, BE0000000000000000000219 /* IncrementalIndexScannerTests.swift in iOS Unit Sources */, BE000000000000000000021A /* IndexSearchRepositoryTests.swift in iOS Unit Sources */, BE000000000000000000021B /* FullIndexRebuildTests.swift in iOS Unit Sources */, BE000000000000000000021C /* ChineseSearchQualityTests.swift in iOS Unit Sources */, BE000000000000000000021D /* IndexWikiLinkRepositoryTests.swift in iOS Unit Sources */, BE000000000000000000021E /* FrontmatterParserTests.swift in iOS Unit Sources */, BE000000000000000000021F /* MarkdownASTParserTests.swift in iOS Unit Sources */, BE0000000000000000000220 /* ObsidianSyntaxScannerTests.swift in iOS Unit Sources */, BE0000000000000000000221 /* MarkdownNoteParserTests.swift in iOS Unit Sources */, BE0000000000000000000222 /* MarkdownReaderRendererTests.swift in iOS Unit Sources */, BE0000000000000000000223 /* MarkdownSourcePatchTests.swift in iOS Unit Sources */, BE0000000000000000000224 /* MarkdownSourcePatchBuilderTests.swift in iOS Unit Sources */, BE0000000000000000000225 /* MarkdownSourceMapParserTests.swift in iOS Unit Sources */, BE0000000000000000000226 /* MarkdownEditorProjectionBuilderTests.swift in iOS Unit Sources */, BE0000000000000000000227 /* MarkdownTextCoordinateMapTests.swift in iOS Unit Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -749,6 +936,26 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 			package = B0A000000000000000000131 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
 		};
+		BE000000000000000000000D /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0A0000000000000000000B7 /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
+		};
+		BE000000000000000000000E /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0A0000000000000000000B9 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+		BE000000000000000000000F /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0A000000000000000000131 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		BE00000000000000000001F7 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0A000000000000000000131 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -760,6 +967,12 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		B0A000000000000000000085 /* Unit Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.tests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BearObs.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BearObs";}; name = Release; };
 		B0A000000000000000000086 /* UI Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_TARGET_NAME = BearObs;}; name = Debug; };
 		B0A000000000000000000087 /* UI Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_TARGET_NAME = BearObs;}; name = Release; };
+		BE0000000000000000000019 /* iOS App Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = BE0000000000000000000006 /* App-iOS.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic; ENABLE_PREVIEWS = YES; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); }; name = Debug; };
+		BE000000000000000000001A /* iOS App Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = BE0000000000000000000006 /* App-iOS.xcconfig */; buildSettings = {CODE_SIGN_STYLE = Automatic; ENABLE_PREVIEWS = YES; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); }; name = Release; };
+		BE000000000000000000001C /* iOS UI Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.ios.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TEST_TARGET_NAME = BearObsIOS;}; name = Debug; };
+		BE000000000000000000001D /* iOS UI Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.ios.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TEST_TARGET_NAME = BearObsIOS;}; name = Release; };
+		BE00000000000000000001FD /* iOS Unit Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BearObs.app/BearObs";}; name = Debug; };
+		BE00000000000000000001FE /* iOS Unit Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B0A00000000000000000001B /* Tests.xcconfig */; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; PRODUCT_BUNDLE_IDENTIFIER = com.ivows.bearobs.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BearObs.app/BearObs";}; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -767,6 +980,9 @@ E50000000000000000000004 /* ReaderViewportTrackerTests.swift in Sources */ = {is
 		B0A000000000000000000091 /* Unit configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000084 /* Unit Debug */, B0A000000000000000000085 /* Unit Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		B0A000000000000000000092 /* UI configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000086 /* UI Debug */, B0A000000000000000000087 /* UI Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		B0A000000000000000000093 /* Project configurations */ = {isa = XCConfigurationList; buildConfigurations = (B0A000000000000000000080 /* Project Debug */, B0A000000000000000000081 /* Project Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		BE0000000000000000000018 /* iOS App configurations */ = {isa = XCConfigurationList; buildConfigurations = (BE0000000000000000000019 /* iOS App Debug */, BE000000000000000000001A /* iOS App Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		BE000000000000000000001B /* iOS UI configurations */ = {isa = XCConfigurationList; buildConfigurations = (BE000000000000000000001C /* iOS UI Debug */, BE000000000000000000001D /* iOS UI Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		BE00000000000000000001FC /* iOS Unit configurations */ = {isa = XCConfigurationList; buildConfigurations = (BE00000000000000000001FD /* iOS Unit Debug */, BE00000000000000000001FE /* iOS Unit Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};
 	rootObject = B0A000000000000000000070 /* Project object */;

@@ -216,6 +216,66 @@ final class BearObsUITests: XCTestCase {
         XCTAssertTrue(saved.contains("# 失败验收"))
     }
 
+    /// AC-REQ-002-01：编辑态必须发生在原详情栏——无 sheet、单一编辑表面、
+    /// 笔记列表选择保持不变；AC-REQ-002-03：保存后退出编辑，同一详情栏的
+    /// 阅读态显示已保存内容（重开路径）。
+    func testEditingStaysInTheDetailColumnAndSavedContentReturnsToTheReader() throws {
+        let (application, temporaryRoot, note) = try makeSeededApplication(
+            noteNamed: "P6InPlaceNote.md", content: "# 原位验收\n\n第一段。\n")
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+
+        application.launch()
+        openNote(titled: "原位验收", in: application)
+        let row = noteRow(titled: "原位验收", in: application)
+
+        enterEditingThroughKeyboardEntry(in: application)
+
+        XCTAssertEqual(
+            application.sheets.count, 0,
+            "In-place editing must not present a sheet"
+        )
+        XCTAssertEqual(
+            application.windows.count, 1,
+            "In-place editing must not open another window"
+        )
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(identifier: "inline-editor-text")
+                .count,
+            1,
+            "There must be exactly one editor surface"
+        )
+        XCTAssertTrue(
+            row.isSelected,
+            "The note selection must not change when the editor opens"
+        )
+
+        let editor = editorSurface(in: application)
+        editor.click()
+        editor.typeText("新段落。")
+
+        application.typeKey("s", modifierFlags: .command)
+        _ = try waitForFile(note, containing: "新段落。")
+        waitUntil { application.buttons["inline-editor-save-button"].isEnabled == false }
+
+        let finish = application.buttons["inline-editor-finish-button"]
+        XCTAssertTrue(finish.waitForExistence(timeout: 5))
+        finish.click()
+
+        let savedText = application.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@",
+                    "新段落。", "新段落。"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(
+            savedText.waitForExistence(timeout: 10),
+            "Returning to the reader must show the saved content"
+        )
+    }
+
     /// AC-REQ-002-06：深色模式 + 最大辅助字号下编辑表面仍可操作。
     func testEditorOperatesInDarkModeAtLargestAccessibilitySize() throws {
         let (application, temporaryRoot, _) = try makeSeededApplication(
@@ -280,11 +340,7 @@ final class BearObsUITests: XCTestCase {
         XCTAssertTrue(list.waitForExistence(timeout: 10), "The note list must be visible")
         // 笔记行是合并的可访问元素，标题文本落在 value（H1 或文件名派生），
         // 不一定在 label，因此两个字段都匹配。
-        let row = application.descendants(matching: .any)
-            .matching(
-                NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", title, title)
-            )
-            .firstMatch
+        let row = noteRow(titled: title, in: application)
         XCTAssertTrue(row.waitForExistence(timeout: 10), "Expected a row for \(title)")
         row.click()
         XCTAssertTrue(
@@ -292,6 +348,14 @@ final class BearObsUITests: XCTestCase {
                 .waitForExistence(timeout: 10),
             "The reader must present the edit button"
         )
+    }
+
+    private func noteRow(titled title: String, in application: XCUIApplication) -> XCUIElement {
+        return application.descendants(matching: .any)
+            .matching(
+                NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", title, title)
+            )
+            .firstMatch
     }
 
     private func editorSurface(in application: XCUIApplication) -> XCUIElement {

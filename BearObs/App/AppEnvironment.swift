@@ -116,16 +116,24 @@ struct AppEnvironment {
         let tagsModel = TagsFeatureModel(source: tagSource)
         let searchModel = SearchFeatureModel(source: searchSource)
         let recentModel = SearchFeatureModel(source: searchSource)
-        let editorSource = EditorDataSource.localVault(vault) { path in
-            try await indexReadiness.refresh(path)
-            async let library: Void = libraryModel.load()
-            async let tags: Void = tagsModel.load()
-            async let favorites: Void = favoritesModel.reload()
-            async let recent: Void = recentModel.search("")
-            let query = await searchModel.query
-            async let search: Void = searchModel.search(query)
-            _ = await (library, tags, favorites, recent, search)
-        }
+        // Recorded platform seam (REQ-004 §7, ADR-010): the iOS app is
+        // read-only and never receives an editing source, so its reader is
+        // constructed with `editorSource == nil` and the editing UI stays
+        // compiled out (see ReaderView / ReaderInlineEditor).
+        #if os(macOS)
+            let editorSource: EditorDataSource? = EditorDataSource.localVault(vault) { path in
+                try await indexReadiness.refresh(path)
+                async let library: Void = libraryModel.load()
+                async let tags: Void = tagsModel.load()
+                async let favorites: Void = favoritesModel.reload()
+                async let recent: Void = recentModel.search("")
+                let query = await searchModel.query
+                async let search: Void = searchModel.search(query)
+                _ = await (library, tags, favorites, recent, search)
+            }
+        #else
+            let editorSource: EditorDataSource? = nil
+        #endif
 
         return AppEnvironment(
             libraryModel: libraryModel,

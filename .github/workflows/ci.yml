@@ -45,6 +45,9 @@ jobs:
       - name: Run unit and UI tests
         run: ./scripts/ci/test.sh
 
+      - name: Run iOS simulator and smoke tests
+        run: ./scripts/ci/test-ios.sh
+
       - name: Collect coverage
         run: ./scripts/ci/coverage.sh
 

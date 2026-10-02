@@ -65,6 +65,7 @@
 | 应用域 | 主要模块 | 对外接口 | 承载能力 |
 |---|---|---|---|
 | macOS 前台应用 | Onboarding、Library、Tags、Search、Reader、Editor、Conflicts、Settings | SwiftUI + AppKit 路由与用户操作 | 连接、浏览、阅读、编辑、冲突处理 |
+| iOS 前台应用（只读纵切） | Vault 选择、Library、Tags、Search、Reader（复用同一批 Feature Model 与渲染） | SwiftUI 导航栈与三栏 | 本地文件夹 Vault 的浏览、阅读、搜索、收藏 |
 | 应用服务 | VaultUseCases、SearchUseCases、EditUseCases、SyncCoordinator | 用例协议 | 编排业务流程 |
 | 内容服务 | MarkdownParser、MetadataExtractor、LinkResolver、Renderer | 解析和渲染协议 | 标签、链接、阅读 |
 | 数据服务 | VaultRepository、IndexRepository、UserStateRepository、SyncLedgerRepository | 仓储协议 | 文件、索引、偏好和协调状态 |
@@ -108,7 +109,7 @@ flowchart TD
 
 | 层面 | 技术路线 |
 |---|---|
-| 客户端 | Swift、SwiftUI、AppKit、macOS 15+；Mac 为首发平台，iOS 客户端后续复用核心模块 |
+| 客户端 | Swift、SwiftUI、AppKit、macOS 15+；Mac 为首发平台；iOS 只读客户端（iOS 26+，本地文件夹来源）按 [REQ-004](requirements/REQ-004-ios-read-only-client.md) 与 [ADR-010](adr/ADR-010-ios-platform-strategy.md) 提前插入当前计划并复用核心模块，iOS 写路径仍后置 |
 | 并发 | Swift Concurrency；可变共享状态由 actor 或串行数据库写入边界管理 |
 | 网络 | `URLSession`、`XMLParser` 和 RFC 4918 子集 |
 | 数据库 | GRDB 7.x、SQLite、FTS5、显式迁移 |
@@ -176,7 +177,7 @@ BearObsApp
     └── Observability
 ```
 
-首版保持一个 App target 和少量清楚的边界。只有当编译隔离、复用或测试速度给出真实收益时，才把 Domain、Sync 或 Markdown 拆成独立 Swift Package。不要为“架构感”提前制造十几个包。
+首版保持每个平台一个 App target（`BearObs` 与只读 `BearObsIOS`）和少量清楚的共享边界。只有当编译隔离、复用或测试速度给出真实收益时，才把 Domain、Sync 或 Markdown 拆成独立 Swift Package。不要为“架构感”提前制造十几个包。
 
 ## 6. 同步技术路线
 
@@ -365,6 +366,10 @@ BearObsApp
 - 安全与兼容性审查。
 
 ### M5 iOS 客户端与后续能力
+
+> 注：iOS **只读**纵切已按 [REQ-004](requirements/REQ-004-ios-read-only-client.md) 与
+> [ADR-010](adr/ADR-010-ios-platform-strategy.md) 提前执行，作为开发计划中的 M-iOS 里程碑
+> （本地文件夹来源、零写路径）。本节其余能力维持原排序，M-iOS 不得反向扩张本节范围。
 
 - App 内创建、删除和重命名；
 - iOS 原生客户端，复用 M0-M4 的 Domain、Markdown、Index 和 Sync 模块；

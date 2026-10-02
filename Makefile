@@ -1,10 +1,22 @@
-.PHONY: build test coverage check ci verify-jianguoyun-offline verify-jianguoyun-manual spike-grdb spike-markdown spike-atomic-write domain-model clean
+.PHONY: build test build-ios test-ios dist-macos dist-ios coverage check ci verify-jianguoyun-offline verify-jianguoyun-manual spike-grdb spike-markdown spike-atomic-write domain-model clean
 
 build:
 	./scripts/ci/build.sh
 
 test:
 	./scripts/ci/test.sh
+
+build-ios:
+	./scripts/ci/build.sh
+
+test-ios:
+	./scripts/ci/test-ios.sh
+
+dist-macos:
+	./scripts/dist/macos.sh
+
+dist-ios:
+	./scripts/dist/ios.sh
 
 coverage:
 	./scripts/ci/coverage.sh

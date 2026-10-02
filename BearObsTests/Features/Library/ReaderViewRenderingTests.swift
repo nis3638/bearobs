@@ -99,65 +99,6 @@ final class ReaderViewRenderingTests: XCTestCase {
         }
     }
 
-    func testInlineEditorRendersInsideTheReaderContentArea() async throws {
-        let path = try VaultPath(decodedRelativePath: "Inline.md")
-        let document = EditorDocument(
-            text: "# Inline\n\nEditable body.",
-            contentHash: try ContentHash(hex: String(repeating: "a", count: 64)),
-            sourceInfo: MarkdownSourceInfo(hasUTF8BOM: false, lineEnding: .lf)
-        )
-        let editor = EditorFeatureModel(
-            path: path,
-            source: EditorDataSource(
-                load: { _ in document },
-                save: { request in
-                    EditorDocument(
-                        text: request.text,
-                        contentHash: document.contentHash,
-                        sourceInfo: request.sourceInfo
-                    )
-                }
-            )
-        )
-        await editor.load()
-
-        let renderer = ImageRenderer(
-            content: InlineMarkdownEditor(
-                model: editor,
-                finishEditing: {},
-                retryReaderLoad: {},
-                save: {}
-            )
-            .frame(width: 760, height: 520)
-        )
-
-        XCTAssertNotNil(renderer.cgImage)
-    }
-
-    func testInlineEditorKeepsLoadFailureInTheReaderContentArea() async throws {
-        let path = try VaultPath(decodedRelativePath: "Unavailable.md")
-        let editor = EditorFeatureModel(
-            path: path,
-            source: EditorDataSource(
-                load: { _ in throw RenderFailure.expected },
-                save: { _ in throw RenderFailure.expected }
-            )
-        )
-        await editor.load()
-
-        let renderer = ImageRenderer(
-            content: InlineMarkdownEditor(
-                model: editor,
-                finishEditing: {},
-                retryReaderLoad: {},
-                save: {}
-            )
-            .frame(width: 760, height: 520)
-        )
-
-        XCTAssertNotNil(renderer.cgImage)
-    }
-
     func testFavoritesAndRecentViewsRenderTheirNavigationClosure() async throws {
         let path = try VaultPath(decodedRelativePath: "Recent.md")
         let note = IndexedNoteSummary(

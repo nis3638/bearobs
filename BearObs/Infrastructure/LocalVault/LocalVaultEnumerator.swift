@@ -21,14 +21,39 @@ struct LocalVaultEnumerator {
         ".obsidian",
         ".trash",
     ]
+    private let entryType: ([String], UInt8) -> UInt8
+    private let beforeClassifyingEntry: ([String]) throws -> Void
+
+    init(
+        beforeClassifyingEntry: @escaping ([String]) throws -> Void = { _ in }
+    ) {
+        entryType = { _, type in type }
+        self.beforeClassifyingEntry = beforeClassifyingEntry
+    }
+
+    init(
+        entryType: @escaping ([String], UInt8) -> UInt8,
+        beforeClassifyingEntry: @escaping ([String]) throws -> Void
+    ) {
+        self.entryType = entryType
+        self.beforeClassifyingEntry = beforeClassifyingEntry
+    }
 
     func enumerateMarkdown(
         at root: URL,
+        temporarilyUnavailable: ((VaultPath) throws -> Void)? = nil,
+        incomplete: (() throws -> Void)? = nil,
         visit: (VaultPath) throws -> Void
     ) throws {
         let descriptor = try openRoot(root)
         defer { _ = Darwin.close(descriptor) }
-        try enumerateDirectory(descriptor, components: [], visit: visit)
+        try enumerateDirectory(
+            descriptor,
+            components: [],
+            temporarilyUnavailable: temporarilyUnavailable,
+            incomplete: incomplete,
+            visit: visit
+        )
     }
 
     private func openRoot(_ root: URL) throws -> Int32 {
@@ -58,12 +83,36 @@ struct LocalVaultEnumerator {
     private func enumerateDirectory(
         _ descriptor: Int32,
         components: [String],
+        temporarilyUnavailable: ((VaultPath) throws -> Void)?,
+        incomplete: (() throws -> Void)?,
         visit: (VaultPath) throws -> Void
     ) throws {
-        for name in try entryNames(in: descriptor) {
+        for entry in try entries(in: descriptor) {
             try Task.checkCancellation()
+            let name = entry.name
             let entryComponents = components + [name]
-            switch try classify(name, in: descriptor, components: entryComponents) {
+            let reportedType = entryType(entryComponents, entry.type)
+            try beforeClassifyingEntry(entryComponents)
+            let kind: EntryKind
+            do {
+                kind = try classify(name, in: descriptor, components: entryComponents)
+            } catch LocalVaultEnumerationError.unreadableEntry {
+                if reportedType == UInt8(DT_UNKNOWN), let incomplete {
+                    try incomplete()
+                    continue
+                }
+                guard
+                    let temporarilyUnavailable,
+                    reportedType == DT_REG,
+                    URL(fileURLWithPath: name).pathExtension.lowercased() == "md",
+                    case .markdown(let path) = try markdownPath(entryComponents)
+                else {
+                    throw LocalVaultEnumerationError.unreadableEntry
+                }
+                try temporarilyUnavailable(path)
+                continue
+            }
+            switch kind {
             case .ignored:
                 continue
             case .directory:
@@ -71,6 +120,8 @@ struct LocalVaultEnumerator {
                     named: name,
                     in: descriptor,
                     components: entryComponents,
+                    temporarilyUnavailable: temporarilyUnavailable,
+                    incomplete: incomplete,
                     visit: visit
                 )
             case .markdown(let path):
@@ -83,6 +134,8 @@ struct LocalVaultEnumerator {
         named name: String,
         in parent: Int32,
         components: [String],
+        temporarilyUnavailable: ((VaultPath) throws -> Void)?,
+        incomplete: (() throws -> Void)?,
         visit: (VaultPath) throws -> Void
     ) throws {
         let child = openat(
@@ -94,10 +147,16 @@ struct LocalVaultEnumerator {
             throw LocalVaultEnumerationError.unreadableDirectory
         }
         defer { _ = Darwin.close(child) }
-        try enumerateDirectory(child, components: components, visit: visit)
+        try enumerateDirectory(
+            child,
+            components: components,
+            temporarilyUnavailable: temporarilyUnavailable,
+            incomplete: incomplete,
+            visit: visit
+        )
     }
 
-    private func entryNames(in descriptor: Int32) throws -> [String] {
+    private func entries(in descriptor: Int32) throws -> [DirectoryEntry] {
         let duplicate = openat(
             descriptor,
             ".",
@@ -112,7 +171,7 @@ struct LocalVaultEnumerator {
         }
         defer { _ = closedir(directory) }
 
-        var names: [String] = []
+        var entries: [DirectoryEntry] = []
         while true {
             try Task.checkCancellation()
             errno = 0
@@ -120,13 +179,15 @@ struct LocalVaultEnumerator {
                 guard errno == 0 else {
                     throw LocalVaultEnumerationError.unreadableDirectory
                 }
-                return names.sorted { canonicalName($0) < canonicalName($1) }
+                return entries.sorted {
+                    canonicalName($0.name) < canonicalName($1.name)
+                }
             }
             guard let name = decodedName(entry) else {
                 throw LocalVaultEnumerationError.invalidEntryPath
             }
             if name != "." && name != ".." {
-                names.append(name)
+                entries.append(DirectoryEntry(name: name, type: entry.pointee.d_type))
             }
         }
     }
@@ -185,6 +246,11 @@ struct LocalVaultEnumerator {
 }
 
 extension LocalVaultEnumerator {
+    private struct DirectoryEntry {
+        let name: String
+        let type: UInt8
+    }
+
     private enum EntryKind {
         case ignored
         case directory

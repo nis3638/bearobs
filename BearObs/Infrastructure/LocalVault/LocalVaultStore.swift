@@ -47,6 +47,22 @@ public struct LocalVaultFileSnapshot: Sendable {
     public let data: Data?
 }
 
+public struct LocalVaultMarkdownInventory: Sendable {
+    public let readable: [LocalVaultFileMetadata]
+    public let temporarilyUnavailablePaths: Set<VaultPath>
+    public let allowsRemoval: Bool
+
+    public init(
+        readable: [LocalVaultFileMetadata],
+        temporarilyUnavailablePaths: Set<VaultPath>,
+        allowsRemoval: Bool = true
+    ) {
+        self.readable = readable
+        self.temporarilyUnavailablePaths = temporarilyUnavailablePaths
+        self.allowsRemoval = allowsRemoval
+    }
+}
+
 public struct LocalVaultStore: Sendable {
     private let rootPath: String
     private let rootDevice: dev_t
@@ -85,6 +101,36 @@ public struct LocalVaultStore: Sendable {
         }
         try validateRootIdentity()
         return result
+    }
+
+    public func markdownInventory() throws -> LocalVaultMarkdownInventory {
+        try validateRootIdentity()
+        var readable: [LocalVaultFileMetadata] = []
+        var temporarilyUnavailablePaths: Set<VaultPath> = []
+        var allowsRemoval = true
+        try LocalVaultEnumerator().enumerateMarkdown(
+            at: URL(fileURLWithPath: rootPath, isDirectory: true),
+            temporarilyUnavailable: { temporarilyUnavailablePaths.insert($0) },
+            incomplete: { allowsRemoval = false },
+            visit: { path in
+                do {
+                    readable.append(try metadata(for: path))
+                } catch let error as LocalVaultStoreError {
+                    switch error {
+                    case .unavailableFile, .fileIsNotRegular:
+                        temporarilyUnavailablePaths.insert(path)
+                    default:
+                        throw error
+                    }
+                }
+            }
+        )
+        try validateRootIdentity()
+        return LocalVaultMarkdownInventory(
+            readable: readable,
+            temporarilyUnavailablePaths: temporarilyUnavailablePaths,
+            allowsRemoval: allowsRemoval
+        )
     }
 
     public func read(

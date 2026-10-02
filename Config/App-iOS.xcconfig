@@ -1,0 +1,20 @@
+#include "Base.xcconfig"
+
+APP_BUNDLE_IDENTIFIER = com.ivows.bearobs.ios
+PRODUCT_BUNDLE_IDENTIFIER = $(APP_BUNDLE_IDENTIFIER)
+// PRODUCT_NAME must stay BearObs so the app module name (and the test
+// sources' `@testable import BearObs`) matches on both platforms; products
+// for different SDKs already live in separate build directories.
+PRODUCT_NAME = BearObs
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = BearObs
+// Recorded platform seam (REQ-004 §7 / ADR-010): the iOS read-only app target.
+// Deployment target matches Package.swift's `.iOS(.v26)` declaration.
+SDKROOT = iphoneos
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+IPHONEOS_DEPLOYMENT_TARGET = 26.0
+TARGETED_DEVICE_FAMILY = 1,2
+SWIFT_VERSION = 6.0
+INFOPLIST_KEY_UILaunchScreen_Generation = YES

@@ -104,6 +104,83 @@ final class LocalVaultEnumeratorTests: XCTestCase {
         XCTAssertEqual(visited.map(\.description), ["a.md"])
     }
 
+    func testLenientEnumerationReportsMarkdownRemovedBeforeClassificationAndContinues()
+        throws
+    {
+        let root = try makeDirectory(named: "vault")
+        let unavailable = root.appendingPathComponent("a.md")
+        try write("unavailable", to: unavailable)
+        try write("readable", to: root.appendingPathComponent("b.md"))
+        var paths: [VaultPath] = []
+        var temporarilyUnavailablePaths: [VaultPath] = []
+        let enumerator = LocalVaultEnumerator { components in
+            if components == ["a.md"] {
+                try FileManager.default.removeItem(at: unavailable)
+            }
+        }
+
+        try enumerator.enumerateMarkdown(
+            at: root,
+            temporarilyUnavailable: { temporarilyUnavailablePaths.append($0) },
+            visit: { paths.append($0) }
+        )
+
+        XCTAssertEqual(paths.map(\.description), ["b.md"])
+        XCTAssertEqual(temporarilyUnavailablePaths.map(\.description), ["a.md"])
+    }
+
+    func testLenientEnumerationDoesNotTreatAMarkdownNamedDirectoryAsAFile() throws {
+        let root = try makeDirectory(named: "vault")
+        let directory = root.appendingPathComponent("Archive.md", isDirectory: true)
+        try write("nested", to: directory.appendingPathComponent("note.md"))
+        var temporarilyUnavailablePaths: [VaultPath] = []
+        let enumerator = LocalVaultEnumerator { components in
+            if components == ["Archive.md"] {
+                try FileManager.default.removeItem(at: directory)
+            }
+        }
+
+        XCTAssertThrowsError(
+            try enumerator.enumerateMarkdown(
+                at: root,
+                temporarilyUnavailable: { temporarilyUnavailablePaths.append($0) },
+                visit: { _ in }
+            )
+        ) { error in
+            XCTAssertEqual(error as? LocalVaultEnumerationError, .unreadableEntry)
+        }
+        XCTAssertTrue(temporarilyUnavailablePaths.isEmpty)
+    }
+
+    func testLenientEnumerationMarksUnknownEntryTypeIncompleteAndContinues() throws {
+        let root = try makeDirectory(named: "vault")
+        let unknown = root.appendingPathComponent("unknown")
+        try write("unknown", to: unknown)
+        try write("readable", to: root.appendingPathComponent("readable.md"))
+        var isComplete = true
+        var paths: [VaultPath] = []
+        let enumerator = LocalVaultEnumerator(
+            entryType: { components, type in
+                components == ["unknown"] ? UInt8(DT_UNKNOWN) : type
+            },
+            beforeClassifyingEntry: { components in
+                if components == ["unknown"] {
+                    try FileManager.default.removeItem(at: unknown)
+                }
+            }
+        )
+
+        try enumerator.enumerateMarkdown(
+            at: root,
+            temporarilyUnavailable: { _ in },
+            incomplete: { isComplete = false },
+            visit: { paths.append($0) }
+        )
+
+        XCTAssertFalse(isComplete)
+        XCTAssertEqual(paths.map(\.description), ["readable.md"])
+    }
+
     func testGoldenVaultEnumerationPreservesPathContract() throws {
         #if SWIFT_PACKAGE
             let bundle = Bundle.module

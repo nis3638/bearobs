@@ -86,7 +86,9 @@ let package = Package(
                 "BearObsMarkdown",
                 "BearObsUserState",
             ],
-            path: "BearObs/App"
+            path: "BearObs/App",
+            // The iOS app entry lives on the iOS platform only (REQ-004/ADR-010).
+            exclude: ["iOS"]
         ),
         .testTarget(
             name: "BearObsDomainTests",

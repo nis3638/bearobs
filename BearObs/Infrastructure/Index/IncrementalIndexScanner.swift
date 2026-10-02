@@ -42,24 +42,46 @@ public actor IncrementalIndexScanner {
     private let store: LocalVaultStore
     private let repository: SQLiteIndexRepository
     private let limits: MarkdownParseLimits
+    private let inventory: @Sendable () throws -> LocalVaultMarkdownInventory
+    private let read: @Sendable (VaultPath, Int) throws -> LocalVaultFileSnapshot
 
     public init(
         root: URL,
         repository: SQLiteIndexRepository,
         limits: MarkdownParseLimits = .default
     ) throws {
+        let store = try LocalVaultStore(root: root)
+        self.store = store
+        self.repository = repository
+        self.limits = limits
+        inventory = { try store.markdownInventory() }
+        read = { path, maximumRetainedBytes in
+            try store.read(path, maximumRetainedBytes: maximumRetainedBytes)
+        }
+    }
+
+    init(
+        root: URL,
+        repository: SQLiteIndexRepository,
+        limits: MarkdownParseLimits,
+        inventory: @escaping @Sendable () throws -> LocalVaultMarkdownInventory,
+        read: @escaping @Sendable (VaultPath, Int) throws -> LocalVaultFileSnapshot
+    ) throws {
         store = try LocalVaultStore(root: root)
         self.repository = repository
         self.limits = limits
+        self.inventory = inventory
+        self.read = read
     }
 
     public func scan() async throws -> IncrementalIndexReport {
-        let files = try store.markdownFiles()
+        let inventory = try inventory()
+        let files = inventory.readable
         let stored = try await repository.fingerprints()
         var metadataSkipped = 0
         var hashSkipped = 0
         var indexed = 0
-        var failed = 0
+        var failed = inventory.temporarilyUnavailablePaths.count
 
         for file in files {
             try Task.checkCancellation()
@@ -68,10 +90,15 @@ public actor IncrementalIndexScanner {
                 continue
             }
 
-            let snapshot = try store.read(
-                file.path,
-                maximumRetainedBytes: limits.maximumNoteBytes
-            )
+            let snapshot: LocalVaultFileSnapshot
+            do {
+                snapshot = try read(file.path, limits.maximumNoteBytes)
+            } catch let error as LocalVaultStoreError
+                where Self.isTemporaryFileReadError(error)
+            {
+                failed += 1
+                continue
+            }
             if let existing = stored[file.path],
                 existing.contentHash == snapshot.contentHash,
                 try await repository.refreshMetadata(
@@ -108,7 +135,11 @@ public actor IncrementalIndexScanner {
         }
 
         let currentPaths = Set(files.map(\.path))
-        let removedPaths = stored.keys.filter { !currentPaths.contains($0) }
+            .union(inventory.temporarilyUnavailablePaths)
+        let removedPaths =
+            inventory.allowsRemoval
+            ? stored.keys.filter { !currentPaths.contains($0) }
+            : []
         for path in removedPaths {
             try Task.checkCancellation()
             try await repository.remove(path)
@@ -236,6 +267,17 @@ extension IncrementalIndexScanner {
             "markdown.invalid-utf8"
         case .invalidLimits:
             throw error
+        }
+    }
+
+    nonisolated private static func isTemporaryFileReadError(
+        _ error: LocalVaultStoreError
+    ) -> Bool {
+        switch error {
+        case .unavailableFile, .fileIsNotRegular, .fileChangedDuringRead:
+            true
+        default:
+            false
         }
     }
 }
