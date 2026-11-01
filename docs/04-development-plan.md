@@ -50,8 +50,8 @@ UI 可以在阶段内并行，但任何远端写能力不得越过本地原子�
 | M0 | Mac 工程与风险基线 | 1-1.5 工程师周 | 内部构建 | 完成：11 项完成，M0-11 移交 M2-A6 |
 | M1 | Mac 本地只读闭环 | 2.5-3 工程师周 | 内部 P0 | 完成：C1-C8 已闭合，本地 Obsidian Vault 可作为只读笔记来源 |
 | M2 | Mac WebDAV 拉取 | 2.5-3 工程师周 | 技术预览 | 延期：在本地编辑闭环后恢复 |
-| M3 | Mac 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 进行中：A1-A5 本地编辑闭合，REQ-002 原位编辑 P0-P6 完成；上传未开始 |
-| M-iOS | iOS 只读纵切（插队执行） | 1-1.5 工程师周 | 内部 P0 | 进行中：M-IOS-1 至 M-IOS-4 完成，M-IOS-5 自动化与容错实现已大部落地，人工验收和覆盖率仍未闭合 |
+| M3 | Mac 编辑与条件上传 | 3-4 工程师周 | MVP 候选 | 进行中：A1-A5、C1 完成，REQ-002 原位编辑 P0-P6 完成；上传未开始 |
+| M-iOS | iOS 只读纵切（插队执行） | 1-1.5 工程师周 | 内部 P0 | 进行中：M-IOS-1 至 M-IOS-4 完成，M-IOS-5 自动化、容错与覆盖率门禁已闭合；iPad 分屏和真机/iCloud 等人工验收仍未闭合 |
 | M4 | Mac 冲突与发布加固 | 2-3 工程师周 | 对外 Mac MVP | 未开始 |
 
 M0 到 M4 是串联质量门；M-iOS 是产品决策插队的独立纵切，复用 M1 已闭合的能力，不改变
@@ -61,12 +61,13 @@ M0-M4 的依赖顺序，也不得向 M0-M4 回写 iOS 专属范围。阶段内�
 
 | 项目 | 当前状态 |
 |---|---|
-| 当前里程碑 | M-iOS：iOS 只读纵切（M-IOS-1 至 M-IOS-4 完成，M-IOS-5 进行中）；M3 保持进行中（A1-A5 完成，上传未开始） |
+| 当前里程碑 | M-iOS：iOS 只读纵切（M-IOS-1 至 M-IOS-4 完成，M-IOS-5 进行中）；M3 保持进行中（A1-A5、C1 完成，上传未开始） |
 | 当前进行中 | M-IOS-5：REQ-004 验收标准逐项验证（含 iPad/真机人工走查） |
-| 最近完成 | M-IOS-1 至 M-IOS-4：平台接缝、共享壳层抽取、BearObsIOS target 与 iOS 壳层、iOS 测试门禁（2026-10-01） |
-| 下一计划项 | M-IOS-5 完成后回到 M3-C1：故障注入接缝；REQ-002 人工 VoiceOver 走查继续待执行 |
+| 最近完成 | M3-C1：生产原子写故障注入接缝与提交状态矩阵（2026-10-03） |
+| 下一计划项 | M-IOS-5 完成后恢复 M2 WebDAV 拉取主线；REQ-002 人工 VoiceOver 走查继续待执行 |
 | 退出阻塞 | 无；坚果云真实认证和分页协议不阻塞本地只读或本地编辑。REQ-002 人工 VoiceOver 走查继续约束 REQ-002 状态变更，不阻塞 M-iOS |
 | 里程碑验收 | M0、M1 已完成；M2 依产品顺序延期 |
+| 插队需求 | [REQ-005 iOS 卡片流与每日回顾](requirements/REQ-005-ios-card-review.md)：复用 M-iOS 的只读边界，只改 iPhone 紧凑宽度；不改变 M0-M4 顺序，不新增写路径。任务拆分见 [REQ-005-ios-card-review-tasks.md](requirements/REQ-005-ios-card-review-tasks.md)。2026-11-01 确认需求，尚未开工 |
 
 状态含义：
 
@@ -344,7 +345,7 @@ M2-A 和 M2-B1 可并行；M2-C6 最后做，不能让后台调度干扰确定�
 M3-A1 至 A5 已完成本地纵切：只编辑已有 `.md`，保存使用原始文本、expected-hash CAS、
 macOS 文件协调、同目录 staging/原子替换和提交结果分级；保存后仅在一个事务中更新当前笔记及其
 Wiki Link。200 个 SwiftPM XCTest 全绿，Xcode App 覆盖率 82.40%，Debug/Release 构建通过。
-M3-A6 与全部远端上传工作仍未开始；M3-C1 的生产 writer 故障注入是下一道写路径门禁。
+M3-A6 与全部远端上传工作仍未开始；M3-C1 的生产 writer 故障注入门禁已完成。
 
 在 A1-A5 之上，REQ-002 原位编辑（实现计划 P0-P7，2026-09-28 至 2026-10-01）完成编辑表面
 重建：ADR-009 决策边界与 UI 测试状态隔离、投影与 UTF-8↔UTF-16 坐标映射、编辑会话状态机、
@@ -368,13 +369,13 @@ VoiceOver 与失败路径验收。收口门禁（2026-10-01）：SwiftPM 345 测
 
 ### 8.4 工作流 C：安全验证
 
-| ID | 工作项 | 依赖 |
-|---|---|---|
-| M3-C1 | 原子写故障注入 | M3-A4 |
-| M3-C2 | 双边变化冲突创建 | M3-B2 |
-| M3-C3 | 未编辑区域字节保留测试 | M3-A4 |
-| M3-C4 | 无 ETag 服务降级验证 | M3-B2 |
-| M3-C5 | 写路径安全评审 | M3-A、M3-B |
+| ID | 工作项 | 依赖 | 状态 | 证据 |
+|---|---|---|---|---|
+| M3-C1 | 原子写故障注入 | M3-A4 | 完成 | 生产 `LocalVaultStore` 提供包内 POSIX operations seam 与校验边界 checkpoint，覆盖 staging 创建、部分写后 `ENOSPC`、`EINTR` 重试、元数据/权限、文件同步与关闭、目标校验、原子替换、目录同步、提交后校验和 cleanup 失败；14 个故障/竞态场景证明提交前失败保留旧文件、正常 cleanup 无残留、cleanup 失败不覆盖主错误，提交后失败准确区分“耐久性不确定”和“已耐久但校验失败”。`LocalVaultStoreTests` 15 项及 M0-09 SIGKILL crash probe 全绿。此项不宣称关闭 POSIX `fstatat` → `renameat` / `unlinkat` 的跨进程恶意竞态，“静默覆盖路径为 0”仍保持未勾选（2026-10-03） |
+| M3-C2 | 双边变化冲突创建 | M3-B2 | 未开始 | 等待 M3-B2 |
+| M3-C3 | 未编辑区域字节保留测试 | M3-A4 | 未开始 | - |
+| M3-C4 | 无 ETag 服务降级验证 | M3-B2 | 未开始 | 等待 M3-B2 |
+| M3-C5 | 写路径安全评审 | M3-A、M3-B | 未开始 | 等待 M3-B 完成 |
 
 本地编辑 UI 可以与 PUT 实现并行，但集成前必须由 SyncPlanner 和原子写测试先给出可执行契约。
 
@@ -413,9 +414,15 @@ VoiceOver 与失败路径验收。收口门禁（2026-10-01）：SwiftPM 345 测
 | M-IOS-2 | 共享壳层抽取 | M-IOS-1 | 完成 | `BearObs/App/WorkspaceColumns.swift`：入口枚举、`WorkspaceSelectionPolicy`、侧边栏与标签树、五个栏位视图、列表/失败组件、`VaultSelectionPrompt`（描述文案参数化）与三栏组装 `VaultWorkspaceView`；`ProjectShellView` 仅保留 49 行外壳；`swift-format --strict` 通过 |
 | M-IOS-3 | iOS App target 与壳层 | M-IOS-2 | 完成 | pbxproj 新增 `BearObsIOS`（iOS 26、TARGETED_DEVICE_FAMILY=1,2、`com.ivows.bearobs.ios`、`Config/App-iOS.xcconfig`、共享 `BearObsIOS.xcscheme`）；`BearObs/App/iOS/`：`BearObsIOSApp`（无 commands）+ `IOSWorkspaceView`（紧凑宽度五入口 TabView+NavigationStack 推入 Reader，常规宽度复用三栏，标签 tab 层级树）；编辑面源文件不进 iOS target；iOS 模拟器 Debug/Release 构建通过 |
 | M-IOS-4 | iOS 构建门禁与测试 | M-IOS-3 | 完成 | `BearObsIOSTests`（以只读 App 为宿主，镜像 Mac 单测成员并排除 3 个编辑器测试）：iOS 模拟器 343 用例全绿；`BearObsIOSUITests` 5 条冒烟/回归（空态、打开临时 Vault→阅读→返回且无编辑入口、五 Tab、Vault 入口、长标签滚动与精确筛选）全绿；`build.sh` 扩展为 Mac+iOS 各 Debug/Release 共 4 构建；`scripts/ci/test-ios.sh`、`make build-ios`/`make test-ios`、CI 新增 iOS 步骤；本机补装 iOS 26.5 模拟器运行时（此前为已记录基础设施缺口） |
-| M-IOS-5 | 验收与证据 | M-IOS-4 | 进行中 | 自动化已补齐离线 Reader、显式选择/书签错误、首次索引状态、搜索→收藏→重启、Wiki Link、Vault 递归 Markdown 字节不变、全量/增量索引不可用容错与诊断、稳定模拟器选择、iOS 格式/覆盖率门禁；iOS 26.5 上 371 个单元测试和 8 个 iPhone UI 测试全绿，iPad 常规宽度构建/测试/安装/启动通过，无签名 Release 归档包含 AppIcon 与隐私清单。仍未闭合：iOS 26.0 runtime 实跑、覆盖率 80% 门槛、iPad 分屏、真机/iCloud/VoiceOver/浅深色人工走查及干净提交基线 |
+| M-IOS-5 | 验收与证据 | M-IOS-4 | 进行中 | 自动化已补齐离线 Reader、显式选择/书签错误、首次索引状态、搜索→收藏→重启、Wiki Link、多 Vault 切换与失败降级、Vault 递归 Markdown 字节不变、全量/增量索引不可用容错与诊断、稳定模拟器选择、iOS 格式/覆盖率门禁；iOS 26.5 上 395 个单元测试和 11 个 iPhone UI 测试全绿，iPad 常规宽度构建/测试/安装/启动通过；核心 line 89.61% / subrange 80.56%，变更 line 90.67% / subrange 80.78%。仍未闭合：iOS 26.0 runtime 实跑、iPad 分屏、真机/iCloud/VoiceOver/浅深色人工走查及干净提交基线 |
 
 ### 8A.3 审查待办任务清单
+
+2026-10-25 交接审计：已补充 [zcode 待开发清单](requirements/REQ-004-ios-development-backlog.md)、
+[完整测试方案](requirements/REQ-004-ios-test-plan.md)和[本次执行报告](requirements/REQ-004-ios-test-report-2026-10-25.md)。
+本次 `make ci` 在根包 SwiftPM Release 测试编译阶段发现书签存储故障注入接口的测试可见性错误；
+独立 App 构建/测试又因 Xcode 工具探测持续等待而中止，未取得新的全绿基线。
+下列既有通过数与覆盖率保留为历史证据，不能视作当前工作树已重新通过；M-IOS-5 继续进行中。
 
 本清单细化 M-IOS-5，并记录 2026-10-02 手机端审查发现的全部未闭合项；`进行中` 只表示
 修复已经开始，不表示实现或验证完成，`待办` 表示已登记但尚未开始。任何子项只有达到“完成口径”
@@ -434,11 +441,11 @@ VoiceOver 与失败路径验收。收口门禁（2026-10-01）：SwiftPM 345 测
 | M-IOS-5.9 | 补齐标签失败降级与可访问性 | REQ-004 §4.2.5、AC-REQ-004-07 | 进行中 | 紧凑与共享标签视图统一保留旧数据和固定失败文案；辅助字号改为纵向布局，VoiceOver 朗读完整路径与计数，选中态增加 checkmark。自动化和浅/深色离屏渲染通过；真实 VoiceOver 与设备浅/深色走查仍待执行 |
 | M-IOS-5.10 | 配置 AppIcon 与应用级 `PrivacyInfo.xcprivacy` | 发布基线、AC-REQ-004-08 | 完成 | iOS target 包含 1024×1024 无透明 AppIcon 和应用级隐私清单；无签名 Release 归档成功，产物包含 `Assets.car`、iPhone/iPad AppIcon 与 `PrivacyInfo.xcprivacy`，清单声明不跟踪、不采集数据，并为文件时间戳 API 提供所需理由 |
 | M-IOS-5.11 | 建立 iOS 26.0 最低版本与 iPad 双宽度门禁 | REQ-004 §4.3、AC-REQ-004-06 | 进行中 | 脚本校验 deployment target 26.0，CI 固定 iOS 26.0 runtime；iOS 26.5 的 iPad 常规宽度构建/UI 测试/安装/启动已通过。当前机器没有 iOS 26.0 runtime，且 XCTest 无稳定分屏尺寸接口，26.0 实跑与分屏紧凑宽度仍待发布证据 |
-| M-IOS-5.12 | 扩充完整 UI/E2E 验收矩阵 | AC-REQ-004-01 至 08、PRD AC-10 | 进行中 | iPhone UI 已覆盖五入口、长标签、选择入口、只读 Reader、搜索→收藏→重启、Wiki Link、最大辅助字号/深色模式及 Vault 下所有 Markdown 的递归字节不变；选择/恢复/切换双 Vault、失败降级和 iPad 双宽度全链路仍待补齐 |
-| M-IOS-5.13 | 将 iOS 格式检查与覆盖率纳入门禁 | 统一质量门、AC-REQ-004-08 | 进行中 | strict `swift-format` 已覆盖 iOS App/UI Tests；CI 导出 xccov 文本/JSON并对核心和变更 Swift 同时执行 80% 行与 executable-subrange 代理门禁，拒绝 0/0，并拒绝变更生产 Swift 未进入 `BearObs.app` 覆盖目标（仅允许显式登记的 macOS-only 文件）。门禁有效但最新实测核心 line 89.03%、core subrange 78.31%、变更 line 70.89%、变更 subrange 72.01%，不得标完成 |
+| M-IOS-5.12 | 扩充完整 UI/E2E 验收矩阵 | AC-REQ-004-01 至 08、PRD AC-10 | 进行中 | iPhone UI 已覆盖五入口、长标签、选择入口、只读 Reader、搜索→收藏→重启、Wiki Link、最大辅助字号/深色模式、双 Vault 切换后的索引/收藏隔离、失败切换保留旧工作区与重启恢复、损坏书签回选择页，以及 Vault 下所有 Markdown 的递归字节不变；选择状态写入改为先完成 `0600` 临时文件再原子替换，避免提交后权限失败造成 UI 与下次恢复不一致。iPad 双宽度、真机 security scope 与 iCloud 降级全链路仍待补齐 |
+| M-IOS-5.13 | 将 iOS 格式检查与覆盖率纳入门禁 | 统一质量门、AC-REQ-004-08 | 完成 | strict `swift-format` 已覆盖 iOS App/UI Tests；CI 导出 xccov 文本/JSON并对核心和变更 Swift 同时执行 80% 行与 executable-subrange 代理门禁，拒绝 0/0，并拒绝变更生产 Swift 未进入 `BearObs.app` 覆盖目标（仅允许显式登记的 macOS-only 文件）。2026-10-04 完整 `make test-ios` 实测核心 line 89.61%、core subrange 80.56%、变更 line 90.67%、变更 subrange 80.78%，四项均通过 80% 门槛 |
 | M-IOS-5.14 | 消除模拟器 UDID 不稳定性 | M-IOS-4 测试基础设施 | 完成 | 选择器支持精确 name/UDID、指定 runtime、Booted 优先和稳定排序；iPhone/iPad fixture、真实 26.5 选择与缺失 26.0 明确失败均已验证，保留原 `CI_IOS_SIMULATOR` 兼容入口 |
 | M-IOS-5.15 | 完成真机与 iCloud Drive 验证 | AC-REQ-004-01/06/07 | 待办 | 真机验证文件夹选择、security-scoped bookmark 重启恢复、Vault 切换和零字节修改；iCloud 在线文件及占位文件验证成功/失败降级；iPad 完成三栏、分屏、VoiceOver、Dynamic Type 与深色模式走查 |
-| M-IOS-5.16 | 收敛未跟踪文件并建立可复现提交基线 | M-IOS-1 至 5、AC-REQ-004-08 | 进行中 | iOS 源码、配置、scheme、资源、脚本和测试以 `m-ios-5-baseline` 建立版本基线；覆盖率门禁尚未达到 80%，因此干净 checkout 的完整 Mac+iOS 门禁仍不能标绿，本项不得标完成 |
+| M-IOS-5.16 | 收敛未跟踪文件并建立可复现提交基线 | M-IOS-1 至 5、AC-REQ-004-08 | 进行中 | iOS 源码、配置、scheme、资源、脚本和测试以 `m-ios-5-baseline` 建立版本基线；覆盖率门禁已通过，仍需将当前工作树收敛为干净提交并从干净 checkout 重跑完整 Mac+iOS 门禁后才能标完成 |
 | M-IOS-5.17 | 为全量索引重建增加逐文件容错 | REQ-004 §4.6.2、索引事务语义 | 完成 | `rebuild()` 把逐文件准备收进 `replaceAll` 事务，每次仅持有一个正文和文件元数据集合，避免全 Vault 正文常驻内存；临时不可读旧条目保留、新条目跳过，成功更新/删除/标签规范化/Wiki 解析与可用性状态在单一 SQLite 事务提交，取消和数据库错误完整回滚，恢复测试通过 |
 | M-IOS-5.18 | 暴露扫描不可用诊断与陈旧状态 | REQ-004 §4.2.5、§4.6.2 | 完成 | v6 schema 持久化匿名不可用总数；旧索引以固定 `note_diagnostics` 标记陈旧，新文件不保存路径。笔记、最近、收藏、搜索和标签五个入口刷新时先更新共享可用性状态，再加载各自数据；旧内容保留并标记、纯空态提供显式“重试”动作、无内容时显示“源文件暂不可用”，恢复后清除；报告、持久化、匿名性、模型与 UI 文案测试通过 |
 
@@ -634,7 +641,7 @@ flowchart LR
 ### 数据安全
 
 - [ ] 静默覆盖路径为 0
-- [ ] 原子写故障测试通过
+- [x] 原子写故障测试通过
 - [ ] 412 和二次冲突通过
 - [ ] 索引与账本分别恢复通过
 - [ ] 冲突双方副本可恢复
@@ -674,7 +681,8 @@ flowchart LR
    [8A.3 审查待办任务清单](#8a3-审查待办任务清单)；
 3. M-IOS-5 只有在 REQ-004 全部验收标准、Mac 与 iOS 双平台门禁、iPad/真机人工走查和
    PRD AC-10 闭合记录全部完成后，才能标记为完成并形成 iOS 只读内部 P0；
-4. M-IOS-5 完成后回到 M3-C1“故障注入接缝”，继续 Mac 编辑与条件上传主线；
+4. M3-C1“故障注入接缝”已并行完成；M-IOS-5 完成后恢复 M2 WebDAV 拉取，再按依赖进入
+   M3-A6 与条件上传；
 5. REQ-002 的 macOS VoiceOver 人工走查仍待执行，但不阻塞 M-IOS；
 6. M2 继续按产品顺序延期，M4 尚未开始。
 

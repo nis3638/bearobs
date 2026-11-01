@@ -21,12 +21,12 @@ struct IOSWorkspaceView: View {
                 VaultSelectionPrompt(
                     descriptionText: "BearObs 只读展示你选择的 Vault 内容，不会修改任何笔记。",
                     errorMessage: workspace.errorMessage,
-                    openVault: { isImporterPresented = true }
+                    openVault: openVault
                 )
             } else {
                 IOSVaultWorkspaceView(
                     environment: workspace.environment,
-                    openVault: { isImporterPresented = true }
+                    openVault: openVault
                 )
                 .id(workspace.environment.vaultID)
             }
@@ -51,6 +51,13 @@ struct IOSWorkspaceView: View {
         } message: {
             Text(workspace.errorMessage ?? "")
         }
+    }
+
+    private func openVault() {
+        #if DEBUG
+            if workspace.openUITestVaultIfConfigured() { return }
+        #endif
+        isImporterPresented = true
     }
 }
 

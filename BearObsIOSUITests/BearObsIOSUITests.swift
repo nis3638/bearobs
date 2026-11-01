@@ -53,7 +53,7 @@ final class BearObsIOSUITests: XCTestCase {
             "The iOS reader must not present any edit entry"
         )
 
-        application.navigationBars.buttons.firstMatch.tap()
+        application.navigationBars.buttons["BackButton"].tap()
 
         XCTAssertTrue(
             list.waitForExistence(timeout: 10),
@@ -108,6 +108,120 @@ final class BearObsIOSUITests: XCTestCase {
             "Tapping the action must present the system file-selection flow"
         )
         XCTAssertFalse(openVault.isHittable, "The picker must be modal over the workspace")
+    }
+
+    /// M-IOS-5.12：切换到第二个 Vault 后必须重建工作区，不能复用第一个
+    /// Vault 的索引或收藏；重启恢复第二个 Vault，两个 Vault 均保持只读。
+    func testSwitchingVaultsKeepsIndexesAndFavoritesIsolated() throws {
+        let (application, temporaryRoot) = try makeIsolatedApplication()
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        let vaultA = temporaryRoot.appendingPathComponent("Vault-A", isDirectory: true)
+        let vaultB = temporaryRoot.appendingPathComponent("Vault-B", isDirectory: true)
+        try FileManager.default.createDirectory(at: vaultA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: vaultB, withIntermediateDirectories: true)
+        try writeNote(named: "Shared.md", content: "# Vault A\n", inVault: vaultA)
+        try writeNote(named: "Shared.md", content: "# Vault B\n", inVault: vaultB)
+        let beforeA = try markdownBytes(in: vaultA)
+        let beforeB = try markdownBytes(in: vaultB)
+        application.launchEnvironment[Self.autoOpenVaultEnvironmentKey] = vaultA.path
+        application.launchEnvironment[Self.importVaultEnvironmentKey] = vaultB.path
+
+        application.launch()
+        let vaultARow = noteRow(titled: "Vault A", in: application)
+        XCTAssertTrue(vaultARow.waitForExistence(timeout: 10))
+        vaultARow.tap()
+        let favorite = application.buttons.matching(
+            identifier: "reader-favorite-button"
+        ).firstMatch
+        XCTAssertTrue(favorite.waitForExistence(timeout: 10))
+        favorite.tap()
+        application.navigationBars.buttons.firstMatch.tap()
+
+        application.descendants(matching: .any)["open-vault"].tap()
+
+        XCTAssertTrue(noteRow(titled: "Vault B", in: application).waitForExistence(timeout: 10))
+        XCTAssertFalse(noteRow(titled: "Vault A", in: application).exists)
+        application.tabBars.buttons["收藏"].tap()
+        XCTAssertTrue(
+            application.staticTexts["还没有收藏"].waitForExistence(timeout: 10)
+        )
+        XCTAssertFalse(noteRow(titled: "Vault A", in: application).exists)
+
+        application.terminate()
+        application.launchEnvironment.removeValue(forKey: Self.autoOpenVaultEnvironmentKey)
+        application.launchEnvironment.removeValue(forKey: Self.importVaultEnvironmentKey)
+        application.launch()
+        XCTAssertTrue(noteRow(titled: "Vault B", in: application).waitForExistence(timeout: 10))
+        XCTAssertEqual(try markdownBytes(in: vaultA), beforeA)
+        XCTAssertEqual(try markdownBytes(in: vaultB), beforeB)
+    }
+
+    /// M-IOS-5.12：第二个 Vault 无法打开时，旧工作区和磁盘中的当前选择
+    /// 都必须保持不变；错误文案不得泄露失败路径。
+    func testFailedVaultSwitchKeepsTheCurrentAndPersistedWorkspace() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "Stable.md",
+            content: "# 稳定 Vault\n"
+        )
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        let missing = temporaryRoot.appendingPathComponent(
+            "private-missing-vault", isDirectory: true)
+        application.launchEnvironment[Self.importVaultEnvironmentKey] = missing.path
+
+        application.launch()
+        XCTAssertTrue(noteRow(titled: "稳定 Vault", in: application).waitForExistence(timeout: 10))
+        application.descendants(matching: .any)["open-vault"].tap()
+
+        let alert = application.alerts["无法打开 Vault"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.staticTexts["无法打开此 Vault，请确认它是可访问的文件夹。"].exists)
+        XCTAssertFalse(alert.label.contains("private-missing-vault"))
+        alert.buttons["好"].tap()
+        XCTAssertTrue(noteRow(titled: "稳定 Vault", in: application).waitForExistence(timeout: 10))
+
+        application.terminate()
+        application.launchEnvironment.removeValue(forKey: Self.autoOpenVaultEnvironmentKey)
+        application.launchEnvironment.removeValue(forKey: Self.importVaultEnvironmentKey)
+        application.launch()
+        XCTAssertTrue(noteRow(titled: "稳定 Vault", in: application).waitForExistence(timeout: 10))
+    }
+
+    /// M-IOS-5.12：损坏书签必须回到选择入口，给出固定说明而不是崩溃或
+    /// 暴露本地路径。
+    func testInvalidSavedBookmarkFallsBackToTheSelectionPrompt() throws {
+        let (application, temporaryRoot) = try makeIsolatedApplication()
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        let selection =
+            [
+                "schemaVersion": 1,
+                "id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+                "bookmarkData": Data([0, 1, 2, 3]).base64EncodedString(),
+            ] as [String: Any]
+        try JSONSerialization.data(withJSONObject: selection).write(
+            to: temporaryRoot.appendingPathComponent("selected-vault.json")
+        )
+
+        application.launch()
+
+        XCTAssertTrue(
+            application.descendants(matching: .any)["open-vault-empty-state"]
+                .waitForExistence(timeout: 10)
+        )
+        XCTAssertTrue(
+            application.staticTexts[
+                "之前选择的 Vault 已失效或无权访问，请重新选择。"
+            ].exists
+        )
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(
+                    NSPredicate(
+                        format: "label CONTAINS %@",
+                        temporaryRoot.lastPathComponent
+                    )
+                ).count,
+            0
+        )
     }
 
     /// 大量标签必须处于真正的滚动容器中；末项可达，并向 VoiceOver 同时表达
@@ -280,6 +394,7 @@ final class BearObsIOSUITests: XCTestCase {
     /// 与 AppDirectories.autoOpenVaultEnvironmentKey 对应（UI 测试目标不链接
     /// 应用模块，故以字面量引用）。
     private static let autoOpenVaultEnvironmentKey = "BEAROBS_AUTOPEN_VAULT"
+    private static let importVaultEnvironmentKey = "BEAROBS_UI_TEST_IMPORT_VAULT"
 
     private func makeSeededApplication(
         noteNamed name: String, content: String
@@ -298,10 +413,12 @@ final class BearObsIOSUITests: XCTestCase {
         content: String,
         in temporaryRoot: URL
     ) throws {
-        let note =
-            temporaryRoot
-            .appendingPathComponent("Vault", isDirectory: true)
-            .appendingPathComponent(name)
+        let vault = temporaryRoot.appendingPathComponent("Vault", isDirectory: true)
+        try writeNote(named: name, content: content, inVault: vault)
+    }
+
+    private func writeNote(named name: String, content: String, inVault vault: URL) throws {
+        let note = vault.appendingPathComponent(name)
         try content.write(to: note, atomically: true, encoding: .utf8)
     }
 

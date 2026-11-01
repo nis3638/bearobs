@@ -10,6 +10,35 @@ import XCTest
 #endif
 
 final class LocalVaultStoreTests: XCTestCase {
+    func testInitializationRejectsEveryInvalidRootShape() throws {
+        let remoteURL = try XCTUnwrap(URL(string: "https://example.invalid/vault"))
+        XCTAssertThrowsError(try LocalVaultStore(root: remoteURL)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .invalidRoot)
+        }
+
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        XCTAssertThrowsError(try LocalVaultStore(root: missing)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .unavailableRoot)
+        }
+
+        let directory = try makeDirectory()
+        let regularFile = directory.appendingPathComponent("not-a-directory")
+        try Data().write(to: regularFile)
+        XCTAssertThrowsError(try LocalVaultStore(root: regularFile)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .rootIsNotDirectory)
+        }
+
+        let symbolicLink = directory.appendingPathComponent("directory-link")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLink,
+            withDestinationURL: directory
+        )
+        XCTAssertThrowsError(try LocalVaultStore(root: symbolicLink)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .rootIsSymbolicLink)
+        }
+    }
+
     func testListsMetadataAndReadsAStableSnapshotWithoutFollowingLinks() throws {
         let root = try makeDirectory()
         let note = root.appendingPathComponent("Folder/note.md")
@@ -76,6 +105,40 @@ final class LocalVaultStoreTests: XCTestCase {
 
         XCTAssertThrowsError(try store.read(path, maximumRetainedBytes: -1)) {
             XCTAssertEqual($0 as? LocalVaultStoreError, .invalidReadLimit)
+        }
+    }
+
+    func testRejectsMissingNestedParentForReadsAndReplacements() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "Missing/note.md")
+        let store = try LocalVaultStore(root: root)
+        let impossibleHash = try ContentHash(hex: String(repeating: "0", count: 64))
+
+        XCTAssertThrowsError(try store.read(path, maximumRetainedBytes: 32)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .unavailableFile)
+        }
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data("replacement".utf8),
+                expectedContentHash: impossibleHash
+            )
+        ) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .unavailableFile)
+        }
+    }
+
+    func testReadRejectsDirectoryMasqueradingAsMarkdownFile() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(path.description),
+            withIntermediateDirectories: false
+        )
+        let store = try LocalVaultStore(root: root)
+
+        XCTAssertThrowsError(try store.read(path, maximumRetainedBytes: 32)) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .fileIsNotRegular)
         }
     }
 
@@ -180,6 +243,261 @@ final class LocalVaultStoreTests: XCTestCase {
         )
         XCTAssertEqual(try Data(contentsOf: outside), Data("outside".utf8))
     }
+
+    func testPreCommitPOSIXFailuresPreserveOriginalAndRemoveStagingFile() throws {
+        let faults: [FaultingAtomicWriteOperations.Fault] = [
+            .createStaging,
+            .partialWriteThenDiskFull,
+            .copyMetadata,
+            .setOwner,
+            .setPermissions,
+            .synchronizeFile,
+            .closeFile,
+            .replace,
+        ]
+        let original = Data("original bytes".utf8)
+        let replacement = Data(repeating: 0x41, count: 128 * 1_024)
+
+        for fault in faults {
+            let root = try makeDirectory()
+            let path = try VaultPath(decodedRelativePath: "Folder/note.md")
+            let url = root.appendingPathComponent(path.description)
+            try write(original, to: url)
+            let baseline = try LocalVaultStore(root: root).read(
+                path,
+                maximumRetainedBytes: original.count
+            )
+            let store = try LocalVaultStore(
+                root: root,
+                atomicWriteOperations: FaultingAtomicWriteOperations(fault: fault)
+            )
+
+            XCTAssertThrowsError(
+                try store.replace(
+                    path,
+                    with: replacement,
+                    expectedContentHash: baseline.contentHash
+                ),
+                "Expected failure for \(fault)"
+            ) {
+                XCTAssertEqual(
+                    $0 as? LocalVaultStoreError,
+                    .atomicWriteFailed(.notCommitted)
+                )
+            }
+            XCTAssertEqual(try Data(contentsOf: url), original)
+            XCTAssertFalse(
+                try containsStagingFile(in: url.deletingLastPathComponent()),
+                "Unexpected staging residue after \(fault)"
+            )
+        }
+    }
+
+    func testInterruptedWriteRetriesAndCommitsCompleteReplacement() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let replacement = Data(repeating: 0x42, count: 128 * 1_024)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: FaultingAtomicWriteOperations(fault: .interruptedWrite)
+        )
+
+        let saved = try store.replace(
+            path,
+            with: replacement,
+            expectedContentHash: baseline.contentHash
+        )
+
+        XCTAssertEqual(saved.data, replacement)
+        XCTAssertEqual(try Data(contentsOf: url), replacement)
+        XCTAssertFalse(try containsStagingFile(in: root))
+    }
+
+    func testDirectorySyncFailureReportsCommittedButDurabilityUncertain() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let replacement = Data("replacement".utf8)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: FaultingAtomicWriteOperations(
+                fault: .synchronizeDirectory
+            )
+        )
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: replacement,
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? LocalVaultStoreError,
+                .atomicWriteFailed(.committedButDurabilityUncertain)
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: url), replacement)
+        XCTAssertFalse(try containsStagingFile(in: root))
+    }
+
+    func testPostCommitVerificationFailureReportsDurableButUnverified() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let replacement = Data("replacement".utf8)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: POSIXLocalVaultAtomicWriteOperations(),
+            atomicWriteCheckpoint: { checkpoint in
+                if checkpoint == .verifyCommittedFile { throw InjectedWriteFault() }
+            }
+        )
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: replacement,
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? LocalVaultStoreError,
+                .atomicWriteFailed(.committedAndDurableButVerificationFailed)
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: url), replacement)
+        XCTAssertFalse(try containsStagingFile(in: root))
+    }
+
+    func testDestinationChangeBeforeValidationIsNotSilentlyOverwritten() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let external = Data("external edit".utf8)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: POSIXLocalVaultAtomicWriteOperations(),
+            atomicWriteCheckpoint: { checkpoint in
+                if checkpoint == .validateDestination {
+                    try external.write(to: url)
+                }
+            }
+        )
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data("replacement".utf8),
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual($0 as? LocalVaultStoreError, .contentChanged)
+        }
+        XCTAssertEqual(try Data(contentsOf: url), external)
+        XCTAssertFalse(try containsStagingFile(in: root))
+    }
+
+    func testForeignReplacementOfStagingIsNotDeletedOrPublished() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        let foreign = Data("foreign".utf8)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: POSIXLocalVaultAtomicWriteOperations(),
+            atomicWriteCheckpoint: { checkpoint in
+                guard checkpoint == .validateStagingFile else { return }
+                let stagingName = try FileManager.default.contentsOfDirectory(
+                    atPath: root.path
+                ).first { $0.hasPrefix(".bearobs-staging-") }
+                let staging = root.appendingPathComponent(try XCTUnwrap(stagingName))
+                try FileManager.default.removeItem(at: staging)
+                try foreign.write(to: staging)
+            }
+        )
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data("replacement".utf8),
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? LocalVaultStoreError,
+                .atomicWriteFailed(.notCommitted)
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: url), original)
+        let staging = try XCTUnwrap(try stagingFile(in: root))
+        XCTAssertEqual(try Data(contentsOf: staging), foreign)
+    }
+
+    func testCleanupFailureKeepsPrimaryFailureAndOriginalTarget() throws {
+        let root = try makeDirectory()
+        let path = try VaultPath(decodedRelativePath: "note.md")
+        let url = root.appendingPathComponent(path.description)
+        let original = Data("original".utf8)
+        try write(original, to: url)
+        let baseline = try LocalVaultStore(root: root).read(
+            path,
+            maximumRetainedBytes: original.count
+        )
+        let store = try LocalVaultStore(
+            root: root,
+            atomicWriteOperations: FaultingAtomicWriteOperations(
+                fault: .partialWriteThenDiskFull,
+                cleanupAlsoFails: true
+            )
+        )
+
+        XCTAssertThrowsError(
+            try store.replace(
+                path,
+                with: Data(repeating: 0x43, count: 128 * 1_024),
+                expectedContentHash: baseline.contentHash
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? LocalVaultStoreError,
+                .atomicWriteFailed(.notCommitted)
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: url), original)
+        XCTAssertTrue(try containsStagingFile(in: root))
+    }
 }
 
 extension LocalVaultStoreTests {
@@ -224,5 +542,132 @@ extension LocalVaultStoreTests {
         }
         guard count >= 0 else { throw CocoaError(.fileReadUnknown) }
         return try XCTUnwrap(String(bytes: bytes.prefix(count), encoding: .utf8))
+    }
+
+    private func containsStagingFile(in directory: URL) throws -> Bool {
+        try stagingFile(in: directory) != nil
+    }
+
+    private func stagingFile(in directory: URL) throws -> URL? {
+        try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .first { $0.hasPrefix(".bearobs-staging-") }
+            .map { directory.appendingPathComponent($0) }
+    }
+}
+
+private struct InjectedWriteFault: Error {}
+
+private final class FaultingAtomicWriteOperations: LocalVaultAtomicWriteOperations,
+    @unchecked Sendable
+{
+    enum Fault: Equatable {
+        case createStaging
+        case interruptedWrite
+        case partialWriteThenDiskFull
+        case copyMetadata
+        case setOwner
+        case setPermissions
+        case synchronizeFile
+        case closeFile
+        case replace
+        case synchronizeDirectory
+    }
+
+    private let base = POSIXLocalVaultAtomicWriteOperations()
+    private let fault: Fault
+    private let cleanupAlsoFails: Bool
+    private var fired = false
+
+    init(fault: Fault, cleanupAlsoFails: Bool = false) {
+        self.fault = fault
+        self.cleanupAlsoFails = cleanupAlsoFails
+    }
+
+    func createStaging(named name: String, in directory: Int32) -> Int32 {
+        guard fault != .createStaging else { return fail(ENOSPC) }
+        return base.createStaging(named: name, in: directory)
+    }
+
+    func write(
+        _ data: Data,
+        offset: Int,
+        maximumCount: Int,
+        to descriptor: Int32
+    ) -> Int {
+        if fault == .interruptedWrite, !fired {
+            fired = true
+            return Int(fail(EINTR))
+        }
+        if fault == .partialWriteThenDiskFull {
+            guard !fired else { return Int(fail(ENOSPC)) }
+            fired = true
+            return base.write(
+                data,
+                offset: offset,
+                maximumCount: min(32, maximumCount),
+                to: descriptor
+            )
+        }
+        return base.write(
+            data,
+            offset: offset,
+            maximumCount: maximumCount,
+            to: descriptor
+        )
+    }
+
+    func copyMetadata(from source: Int32, to destination: Int32) -> Int32 {
+        guard fault != .copyMetadata else { return fail(EACCES) }
+        return base.copyMetadata(from: source, to: destination)
+    }
+
+    func setOwner(_ owner: uid_t, group: gid_t, of descriptor: Int32) -> Int32 {
+        guard fault != .setOwner else { return fail(EPERM) }
+        return base.setOwner(owner, group: group, of: descriptor)
+    }
+
+    func setPermissions(_ permissions: mode_t, of descriptor: Int32) -> Int32 {
+        guard fault != .setPermissions else { return fail(EACCES) }
+        return base.setPermissions(permissions, of: descriptor)
+    }
+
+    func synchronizeFile(_ descriptor: Int32) -> Int32 {
+        guard fault != .synchronizeFile else { return fail(EIO) }
+        return base.synchronizeFile(descriptor)
+    }
+
+    func closeFile(_ descriptor: Int32) -> Int32 {
+        guard fault == .closeFile, !fired else { return base.closeFile(descriptor) }
+        fired = true
+        _ = base.closeFile(descriptor)
+        return fail(EIO)
+    }
+
+    func replace(
+        stagingName: String,
+        destinationName: String,
+        in directory: Int32
+    ) -> Int32 {
+        guard fault != .replace else { return fail(EIO) }
+        return base.replace(
+            stagingName: stagingName,
+            destinationName: destinationName,
+            in: directory
+        )
+    }
+
+    func synchronizeDirectory(_ descriptor: Int32) -> Int32 {
+        guard fault != .synchronizeDirectory else { return fail(EIO) }
+        return base.synchronizeDirectory(descriptor)
+    }
+
+    func remove(named name: String, from directory: Int32) -> Int32 {
+        guard !cleanupAlsoFails else { return fail(EACCES) }
+        return base.remove(named: name, from: directory)
+    }
+
+    private func fail(_ code: Int32) -> Int32 {
+        errno = code
+        return -1
     }
 }

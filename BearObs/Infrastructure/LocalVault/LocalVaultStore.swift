@@ -26,6 +26,101 @@ public enum LocalVaultWriteCommitState: Equatable, Sendable {
     case committedAndDurableButVerificationFailed
 }
 
+enum LocalVaultAtomicWriteCheckpoint: Equatable, Sendable {
+    case validateStagingFile
+    case validateDestination
+    case verifyCommittedFile
+}
+
+protocol LocalVaultAtomicWriteOperations: Sendable {
+    func createStaging(named name: String, in directory: Int32) -> Int32
+    func write(
+        _ data: Data,
+        offset: Int,
+        maximumCount: Int,
+        to descriptor: Int32
+    ) -> Int
+    func copyMetadata(from source: Int32, to destination: Int32) -> Int32
+    func setOwner(_ owner: uid_t, group: gid_t, of descriptor: Int32) -> Int32
+    func setPermissions(_ permissions: mode_t, of descriptor: Int32) -> Int32
+    func synchronizeFile(_ descriptor: Int32) -> Int32
+    func closeFile(_ descriptor: Int32) -> Int32
+    func replace(
+        stagingName: String,
+        destinationName: String,
+        in directory: Int32
+    ) -> Int32
+    func synchronizeDirectory(_ descriptor: Int32) -> Int32
+    func remove(named name: String, from directory: Int32) -> Int32
+}
+
+struct POSIXLocalVaultAtomicWriteOperations: LocalVaultAtomicWriteOperations {
+    func createStaging(named name: String, in directory: Int32) -> Int32 {
+        openat(
+            directory,
+            name,
+            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+            0o600
+        )
+    }
+
+    func write(
+        _ data: Data,
+        offset: Int,
+        maximumCount: Int,
+        to descriptor: Int32
+    ) -> Int {
+        data.withUnsafeBytes { buffer in
+            Darwin.write(
+                descriptor,
+                buffer.baseAddress?.advanced(by: offset),
+                maximumCount
+            )
+        }
+    }
+
+    func copyMetadata(from source: Int32, to destination: Int32) -> Int32 {
+        fcopyfile(
+            source,
+            destination,
+            nil,
+            copyfile_flags_t(COPYFILE_ACL | COPYFILE_XATTR)
+        )
+    }
+
+    func setOwner(_ owner: uid_t, group: gid_t, of descriptor: Int32) -> Int32 {
+        fchown(descriptor, owner, group)
+    }
+
+    func setPermissions(_ permissions: mode_t, of descriptor: Int32) -> Int32 {
+        fchmod(descriptor, permissions)
+    }
+
+    func synchronizeFile(_ descriptor: Int32) -> Int32 {
+        fsync(descriptor)
+    }
+
+    func closeFile(_ descriptor: Int32) -> Int32 {
+        Darwin.close(descriptor)
+    }
+
+    func replace(
+        stagingName: String,
+        destinationName: String,
+        in directory: Int32
+    ) -> Int32 {
+        renameat(directory, stagingName, directory, destinationName)
+    }
+
+    func synchronizeDirectory(_ descriptor: Int32) -> Int32 {
+        fsync(descriptor)
+    }
+
+    func remove(named name: String, from directory: Int32) -> Int32 {
+        unlinkat(directory, name, 0)
+    }
+}
+
 public struct LocalVaultFileMetadata: Equatable, Sendable {
     public let path: VaultPath
     public let modifiedAt: Date
@@ -67,8 +162,23 @@ public struct LocalVaultStore: Sendable {
     private let rootPath: String
     private let rootDevice: dev_t
     private let rootInode: ino_t
+    private let atomicWriteOperations: any LocalVaultAtomicWriteOperations
+    private let atomicWriteCheckpoint: @Sendable (LocalVaultAtomicWriteCheckpoint) throws -> Void
 
     public init(root: URL) throws {
+        try self.init(
+            root: root,
+            atomicWriteOperations: POSIXLocalVaultAtomicWriteOperations(),
+            atomicWriteCheckpoint: { _ in }
+        )
+    }
+
+    init(
+        root: URL,
+        atomicWriteOperations: any LocalVaultAtomicWriteOperations,
+        atomicWriteCheckpoint:
+            @escaping @Sendable (LocalVaultAtomicWriteCheckpoint) throws -> Void = { _ in }
+    ) throws {
         guard root.isFileURL else { throw LocalVaultStoreError.invalidRoot }
         var information = stat()
         guard lstat(root.path, &information) == 0 else {
@@ -81,6 +191,8 @@ public struct LocalVaultStore: Sendable {
             rootPath = root.path
             rootDevice = information.st_dev
             rootInode = information.st_ino
+            self.atomicWriteOperations = atomicWriteOperations
+            self.atomicWriteCheckpoint = atomicWriteCheckpoint
         default:
             throw LocalVaultStoreError.rootIsNotDirectory
         }
@@ -195,6 +307,10 @@ public struct LocalVaultStore: Sendable {
             )
         }
         do {
+            try runAtomicWriteCheckpoint(
+                at: .verifyCommittedFile,
+                failureState: .committedAndDurableButVerificationFailed
+            )
             let snapshot = try read(path, maximumRetainedBytes: data.count)
             guard snapshot.data == data else {
                 throw LocalVaultStoreError.atomicWriteFailed(
@@ -293,11 +409,9 @@ extension LocalVaultStore {
         }
 
         let stagingName = ".bearobs-staging-\(UUID().uuidString).tmp"
-        let stagingDescriptor = openat(
-            directory,
-            stagingName,
-            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-            0o600
+        let stagingDescriptor = atomicWriteOperations.createStaging(
+            named: stagingName,
+            in: directory
         )
         guard stagingDescriptor >= 0 else {
             throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
@@ -306,13 +420,13 @@ extension LocalVaultStore {
         do {
             stagingIdentity = try identity(of: stagingDescriptor)
         } catch {
-            _ = Darwin.close(stagingDescriptor)
+            _ = atomicWriteOperations.closeFile(stagingDescriptor)
             throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
         }
         var ownsStaging = true
         var stagingIsOpen = true
         defer {
-            if stagingIsOpen { _ = Darwin.close(stagingDescriptor) }
+            if stagingIsOpen { _ = atomicWriteOperations.closeFile(stagingDescriptor) }
             if ownsStaging {
                 try? removeOwnedStaging(
                     named: stagingName,
@@ -325,34 +439,45 @@ extension LocalVaultStore {
         do {
             try writeAll(data, to: stagingDescriptor)
             guard
-                fcopyfile(
-                    existing.descriptor,
-                    stagingDescriptor,
-                    nil,
-                    copyfile_flags_t(COPYFILE_ACL | COPYFILE_XATTR)
+                atomicWriteOperations.copyMetadata(
+                    from: existing.descriptor,
+                    to: stagingDescriptor
                 ) == 0
             else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
-            guard fchown(stagingDescriptor, existing.owner, existing.group) == 0 else {
+            guard
+                atomicWriteOperations.setOwner(
+                    existing.owner,
+                    group: existing.group,
+                    of: stagingDescriptor
+                ) == 0
+            else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
-            guard fchmod(stagingDescriptor, existing.permissions) == 0 else {
+            guard
+                atomicWriteOperations.setPermissions(
+                    existing.permissions,
+                    of: stagingDescriptor
+                ) == 0
+            else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
-            guard fsync(stagingDescriptor) == 0 else {
+            guard atomicWriteOperations.synchronizeFile(stagingDescriptor) == 0 else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
             stagingIsOpen = false
-            guard Darwin.close(stagingDescriptor) == 0 else {
+            guard atomicWriteOperations.closeFile(stagingDescriptor) == 0 else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
 
+            try runAtomicWriteCheckpoint(at: .validateStagingFile)
             try requireIdentity(
                 stagingIdentity,
                 named: stagingName,
                 in: directory
             )
+            try runAtomicWriteCheckpoint(at: .validateDestination)
             try requireCurrentDestination(
                 named: fileName,
                 identity: existing.identity,
@@ -364,11 +489,17 @@ extension LocalVaultStore {
                 named: stagingName,
                 in: directory
             )
-            guard renameat(directory, stagingName, directory, fileName) == 0 else {
+            guard
+                atomicWriteOperations.replace(
+                    stagingName: stagingName,
+                    destinationName: fileName,
+                    in: directory
+                ) == 0
+            else {
                 throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
             ownsStaging = false
-            guard fsync(directory) == 0 else {
+            guard atomicWriteOperations.synchronizeDirectory(directory) == 0 else {
                 throw LocalVaultStoreError.atomicWriteFailed(
                     .committedButDurabilityUncertain
                 )
@@ -429,20 +560,30 @@ extension LocalVaultStore {
     }
 
     private func writeAll(_ data: Data, to descriptor: Int32) throws {
-        try data.withUnsafeBytes { buffer in
-            var written = 0
-            while written < buffer.count {
-                let count = Darwin.write(
-                    descriptor,
-                    buffer.baseAddress?.advanced(by: written),
-                    buffer.count - written
-                )
-                if count < 0, errno == EINTR { continue }
-                guard count > 0 else {
-                    throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
-                }
-                written += count
+        var written = 0
+        while written < data.count {
+            let count = atomicWriteOperations.write(
+                data,
+                offset: written,
+                maximumCount: min(data.count - written, 64 * 1_024),
+                to: descriptor
+            )
+            if count < 0, errno == EINTR { continue }
+            guard count > 0 else {
+                throw LocalVaultStoreError.atomicWriteFailed(.notCommitted)
             }
+            written += count
+        }
+    }
+
+    private func runAtomicWriteCheckpoint(
+        at checkpoint: LocalVaultAtomicWriteCheckpoint,
+        failureState: LocalVaultWriteCommitState = .notCommitted
+    ) throws {
+        do {
+            try atomicWriteCheckpoint(checkpoint)
+        } catch {
+            throw LocalVaultStoreError.atomicWriteFailed(failureState)
         }
     }
 
@@ -495,7 +636,7 @@ extension LocalVaultStore {
             throw LocalVaultStoreError.unavailableFile
         }
         guard identity(of: information) == expected else { return }
-        guard unlinkat(directory, name, 0) == 0 else {
+        guard atomicWriteOperations.remove(named: name, from: directory) == 0 else {
             throw LocalVaultStoreError.unavailableFile
         }
     }

@@ -197,3 +197,11 @@ tags:
   [FR-08 收藏](../01-product-requirements.md#fr-08-收藏)
 - 平台策略:[ADR-010 iOS 平台策略](../adr/ADR-010-ios-platform-strategy.md)
 - 复用基线:[REQ-001](REQ-001-sidebar-navigation-and-note-list.md) 三栏信息结构
+
+## 10. 开发交接与测试执行
+
+- [iOS 待开发与验收清单（zcode 交接）](REQ-004-ios-development-backlog.md)
+- [iOS 完整测试与验收方案](REQ-004-ios-test-plan.md)
+- [2026-10-25 本次测试报告](REQ-004-ios-test-report-2026-10-25.md)
+
+交接清单细化当前 M-IOS-5，不扩大本需求范围；测试方案中的待补案例不代表已经执行或通过。

@@ -82,6 +82,7 @@ struct AppEnvironment {
         scope retainedScope: VaultScope?
     ) throws -> AppEnvironment {
         let scope = retainedScope ?? VaultScope(url: root)
+        let vault = try LocalVaultStore(root: root)
         let metadata = try directories.metadata(for: selection.id)
         let repository = try SQLiteIndexRepository(
             path: metadata.appendingPathComponent("index.sqlite").path
@@ -99,7 +100,6 @@ struct AppEnvironment {
             snapshots: readerSnapshots
         )
         let indexReadiness = IndexReadiness(scanner: scanner)
-        let vault = try LocalVaultStore(root: root)
         let userState = try FileUserStateStore(metadataDirectory: metadata)
 
         let librarySource = LibraryDataSource(
@@ -288,20 +288,51 @@ final class AppWorkspaceModel {
             errorMessage = "无法准备本地数据目录。"
             return
         }
+        var pendingID: UUID?
+        var pendingEnvironment: AppEnvironment?
         do {
             let selection = try VaultSelection.make(for: root)
-            let nextEnvironment = try AppEnvironment.make(
+            pendingID = selection.id
+            pendingEnvironment = try AppEnvironment.make(
                 root: root,
                 selection: selection,
                 directories: directories
             )
             try selectionStore.save(selection)
+            guard let nextEnvironment = pendingEnvironment else {
+                throw AppEnvironmentError.unavailable
+            }
             environment = nextEnvironment
             vaultURL = root
+            pendingID = nil
         } catch {
+            pendingEnvironment = nil
+            if let pendingID {
+                try? directories.removeVaultData(for: pendingID)
+            }
             errorMessage = "无法打开此 Vault，请确认它是可访问的文件夹。"
         }
     }
+
+    #if DEBUG
+        /// XCTest cannot reliably navigate UIDocumentPicker to the test runner's
+        /// temporary directory. Keep the seam narrow: it substitutes only the
+        /// successful picker result while the real picker remains covered by a
+        /// separate UI test.
+        func openUITestVaultIfConfigured(
+            environment: [String: String] = ProcessInfo.processInfo.environment
+        ) -> Bool {
+            guard
+                environment[AppDirectories.appSupportOverrideEnvironmentKey] != nil,
+                let raw = environment[AppDirectories.uiTestImportVaultEnvironmentKey],
+                !raw.isEmpty
+            else { return false }
+            handleVaultImport(
+                .success([URL(fileURLWithPath: raw, isDirectory: true)])
+            )
+            return true
+        }
+    #endif
 
     func handleVaultImport(_ result: Result<[URL], any Error>) {
         switch Self.vaultImportDecision(for: result) {
@@ -434,6 +465,10 @@ struct AppDirectories {
     static let appSupportOverrideEnvironmentKey = "BEAROBS_APP_SUPPORT_ROOT"
     /// UI 测试通过该环境变量指定启动时直接打开的 Vault 目录。
     static let autoOpenVaultEnvironmentKey = "BEAROBS_AUTOPEN_VAULT"
+    #if DEBUG
+        /// UI-test-only replacement for a successful document-picker result.
+        static let uiTestImportVaultEnvironmentKey = "BEAROBS_UI_TEST_IMPORT_VAULT"
+    #endif
 
     static func makeLive(
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -472,5 +507,11 @@ struct AppDirectories {
             attributes: nil
         )
         return metadata
+    }
+
+    func removeVaultData(for id: UUID) throws {
+        let vaultData = vaults.appendingPathComponent(id.uuidString, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: vaultData.path) else { return }
+        try FileManager.default.removeItem(at: vaultData)
     }
 }
