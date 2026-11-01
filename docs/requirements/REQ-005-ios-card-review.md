@@ -211,6 +211,7 @@ tags:
 ## 11. 追踪关系
 
 - 上游决策：本需求确认于 2026-11-01 的需求讨论，范围限定为消费与回顾。
+- 交互原型：[iOS 卡片流与每日回顾原型 (HTML)](../prototypes/ios-card-review-prototype.html)。
 - 平台边界：[REQ-004](REQ-004-ios-read-only-client.md)、[ADR-010](../adr/ADR-010-ios-platform-strategy.md)。
 - 复用基线：[REQ-001](REQ-001-sidebar-navigation-and-note-list.md) 的标签精确匹配语义，现有离线搜索。
 - 开发拆分：[REQ-005 模块设计与开发任务](REQ-005-ios-card-review-tasks.md)。

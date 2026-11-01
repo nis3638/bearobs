@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BearObs - flomo 风格移动端卡片流与回顾原型</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* 仿 iOS / flomo 平滑手势动画 */
+    .drawer-overlay {
+      transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .drawer-content {
+      transform: translateX(-100%);
+      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .drawer-open .drawer-content {
+      transform: translateX(0%);
+    }
+
+    .slide-enter {
+      transform: translateX(100%);
+      transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .slide-active {
+      transform: translateX(0%);
+    }
+
+    .sheet-enter {
+      transform: translateY(100%);
+      transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .sheet-active {
+      transform: translateY(0%);
+    }
+
+    /* flomo 专属配色 */
+    :root {
+      --flomo-green: #05c160;
+      --flomo-green-hover: #04ab55;
+      --flomo-bg: #f5f6f8;
+      --flomo-card: #ffffff;
+      --flomo-tag-bg: #eff6ff;
+      --flomo-tag-text: #2563eb;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col items-center justify-start min-h-screen p-3 sm:p-6 font-sans select-none antialiased">
+
+  <!-- 顶部控制条 -->
+  <header class="w-full max-w-[390px] mb-3 flex items-center justify-between text-xs text-slate-400">
+    <div class="flex items-center space-x-2">
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#05c160] animate-pulse"></span>
+      <span class="font-bold text-white tracking-wide">BearObs</span>
+      <span class="bg-[#05c160]/20 text-[#05c160] border border-[#05c160]/30 px-2 py-0.5 rounded-full text-[10px] font-semibold">flomo 体验版</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-[11px]" onclick="toggleTheme()">亮 / 暗模式</button>
+      <button class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-[11px]" onclick="resetData()">重置</button>
+    </div>
+  </header>
+
+  <!-- 模拟 iPhone 16 机身外框 (375 x 780 pt) -->
+  <div id="deviceFrame" class="relative w-[375px] h-[780px] bg-[#f5f6f8] text-slate-900 border-[7px] border-slate-800 rounded-[44px] shadow-2xl overflow-hidden flex flex-col transition-colors duration-200">
+    
+    <!-- 顶部灵动岛 -->
+    <div class="absolute top-2.5 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-50 pointer-events-none flex items-center justify-between px-2.5">
+      <span class="w-2 h-2 rounded-full bg-slate-900"></span>
+      <span class="w-2 h-2 rounded-full bg-slate-800"></span>
+    </div>
+
+    <!-- 顶部 iOS 状态栏 -->
+    <div class="pt-3 px-6 pb-1 flex justify-between items-center text-[11px] font-semibold tracking-wider text-slate-500 z-40 select-none">
+      <span id="statusBarTime">18:30</span>
+      <div class="flex items-center space-x-1.5">
+        <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 18.25A10.94 10.94 0 0 1 1 12C1 5.92 5.92 1 12 1s11 4.92 11 11c0 2.37-.75 4.57-2.02 6.36l-.62-.64A9.97 9.97 0 0 0 21 12c0-4.97-4.03-9-9-9z"/></svg>
+        <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98C20.93 5.9 16.69 4 12 4z"/></svg>
+        <div class="w-5 h-2.5 border border-current rounded-sm p-0.5 flex items-center">
+          <div class="h-full w-full bg-current rounded-2xs"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 容器主区域 -->
+    <main class="relative flex-1 overflow-hidden flex flex-col">
+
+      <!-- ==================== TAB 1: 笔记卡片流 (高保真还原 flomo) ==================== -->
+      <section id="tabFeed" class="absolute inset-0 flex flex-col transition-opacity duration-200">
+        
+        <!-- flomo 顶部导航头 -->
+        <header class="px-4 py-2 flex items-center justify-between border-b border-black/[0.04] bg-inherit z-10">
+          <!-- 左侧：汉堡菜单 + 全部笔记下拉 -->
+          <div class="flex items-center space-x-2">
+            <button onclick="openDrawer()" class="p-1.5 -ml-1.5 rounded-lg text-slate-700 hover:bg-black/5 active:scale-95 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </button>
+            <div class="flex items-center space-x-1 cursor-pointer font-bold text-base text-slate-900" onclick="toggleSortMenu()">
+              <span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-0.5"></span>
+              <span id="currentFilterTitle">全部笔记</span>
+              <svg class="w-3.5 h-3.5 text-slate-500 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- 右侧：同步刷新 + 搜索 + 过滤图标 -->
+          <div class="flex items-center space-x-0.5">
+            <button onclick="triggerSync()" id="topSyncBtn" title="立即同步" class="p-1.5 rounded-lg text-slate-600 hover:bg-black/5 active:scale-95 transition">
+              <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+            </button>
+            <button onclick="toggleSearchBar()" class="p-1.5 rounded-lg text-slate-600 hover:bg-black/5 active:scale-95 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </button>
+            <button onclick="openFilterActionSheet()" class="p-1.5 rounded-lg text-slate-600 hover:bg-black/5 active:scale-95 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- 动态下拉排序弹框 -->
+        <div id="sortMenuDropdown" class="hidden absolute top-12 left-12 w-48 bg-white border border-black/[0.08] rounded-xl shadow-xl z-30 py-1.5 text-xs text-slate-700">
+          <div class="px-3 py-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer font-medium text-[#05c160]" onclick="selectSort('mod_desc')">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path></svg>
+              <span>修改时间 (最新)</span>
+            </div>
+            <span>✓</span>
+          </div>
+          <div class="px-3 py-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer" onclick="selectSort('mod_asc')">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16m0 0l-4-4m4 4l4-4m6-4V4m0 0l-4 4m4-4l4 4"></path></svg>
+              <span>修改时间 (从旧到新)</span>
+            </div>
+          </div>
+          <hr class="my-1 border-slate-100">
+          <div class="px-3 py-2 text-slate-400 text-[11px]">只读 Vault · 零写路径</div>
+        </div>
+
+        <!-- 展开式搜索条 -->
+        <div id="searchBarContainer" class="hidden px-4 py-2 bg-white/70 backdrop-blur border-b border-black/[0.04]">
+          <div class="relative">
+            <input 
+              id="flomoSearchInput" 
+              type="text" 
+              placeholder="搜索正文、标签或标题..." 
+              oninput="handleSearch(this.value)"
+              class="w-full bg-[#f0f2f5] border border-transparent rounded-xl pl-8 pr-7 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#05c160] transition"
+            >
+            <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            <button id="clearSearchBtn" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-slate-600" onclick="clearSearch()">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 当前激活标签筛选 Bar -->
+        <div id="filterPillBar" class="hidden px-4 py-1.5 bg-blue-50/90 border-b border-blue-100 flex items-center justify-between text-xs text-blue-800">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] text-blue-500">已筛选标签:</span>
+            <span id="activeFilterBadge" class="font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">#project</span>
+          </div>
+          <button onclick="clearTagFilter()" class="text-[11px] font-medium text-blue-600 hover:text-blue-900 underline">清除</button>
+        </div>
+
+        <!-- flomo 卡片流列表主体 -->
+        <div id="cardStream" class="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 no-scrollbar pb-16">
+          <!-- 动态渲染 flomo 风格白卡片 -->
+        </div>
+      </section>
+
+
+      <!-- ==================== TAB 2: 每日回顾 (flomo 风格) ==================== -->
+      <section id="tabReview" class="absolute inset-0 flex flex-col transition-opacity duration-200 hidden">
+        <!-- 顶部导航 -->
+        <header class="px-4 py-2.5 border-b border-black/[0.04] flex items-center justify-between bg-inherit">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-base font-bold text-slate-900">✨ 每日回顾</span>
+            <span class="text-[11px] text-slate-400">稳定批次</span>
+          </div>
+          <button onclick="openRuleModal()" class="flex items-center gap-1 text-xs font-semibold text-[#05c160] bg-[#05c160]/10 hover:bg-[#05c160]/15 px-2.5 py-1.5 rounded-lg transition active:scale-95">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+            <span>调整规则</span>
+          </button>
+        </header>
+
+        <!-- 回顾规则横幅 -->
+        <div class="px-3.5 pt-2.5 pb-1">
+          <div class="bg-white border border-black/[0.06] rounded-xl p-3 shadow-xs flex items-center justify-between text-xs">
+            <div>
+              <div class="text-[11px] text-slate-400">当前抽取条件</div>
+              <div id="reviewRuleText" class="font-semibold text-slate-800 mt-0.5">全部笔记 · 近三个月 · 8 条</div>
+            </div>
+            <div class="text-right">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                今日已就绪
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 回顾卡片流 -->
+        <div id="reviewStream" class="flex-1 overflow-y-auto px-3.5 py-2.5 space-y-2.5 no-scrollbar pb-16">
+          <!-- 动态渲染回顾卡片 -->
+        </div>
+      </section>
+
+
+      <!-- ==================== TAB 3: 标签列表 ==================== -->
+      <section id="tabTags" class="absolute inset-0 flex flex-col transition-opacity duration-200 hidden">
+        <header class="px-4 py-2.5 border-b border-black/[0.04]">
+          <h1 class="text-base font-bold text-slate-900">全部标签</h1>
+        </header>
+        <div id="tagGridContainer" class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-16">
+          <!-- 动态注入标签 -->
+        </div>
+      </section>
+
+
+      <!-- ==================== 左侧侧边栏抽屉 (高保真还原 flomo 抽屉) ==================== -->
+      <div id="sideDrawer" class="absolute inset-0 z-50 pointer-events-none">
+        <!-- 遮罩 -->
+        <div id="drawerOverlay" class="drawer-overlay absolute inset-0 bg-black/40 opacity-0 transition-opacity" onclick="closeDrawer()"></div>
+        
+        <!-- 抽屉内容主体 (宽 82%) -->
+        <div id="drawerContent" class="drawer-content absolute top-0 bottom-0 left-0 w-[82%] bg-[#ffffff] shadow-2xl flex flex-col justify-between py-6 px-5 overflow-y-auto no-scrollbar pointer-events-auto">
+          
+          <div>
+            <!-- 用户 / Vault 状态信息 (flomo 样式) -->
+            <div class="flex justify-between items-center mb-5">
+              <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
+                  BO
+                </div>
+                <div>
+                  <div class="flex items-center gap-1">
+                    <span class="font-bold text-sm text-slate-900">BearObs Vault</span>
+                    <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.2 rounded">只读</span>
+                  </div>
+                  <div class="text-[11px] text-slate-400">Obsidian 离线索引</div>
+                </div>
+              </div>
+              <button onclick="closeDrawer()" class="text-slate-400 hover:text-slate-600 p-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            <!-- 数据统计三格 (flomo 标志性数据总览) -->
+            <div class="grid grid-cols-3 gap-2 py-3 border-y border-slate-100 text-center mb-4">
+              <div>
+                <div class="text-xl font-extrabold text-slate-800">345</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">笔记</div>
+              </div>
+              <div>
+                <div class="text-xl font-extrabold text-slate-800">52</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">标签</div>
+              </div>
+              <div>
+                <div class="text-xl font-extrabold text-slate-800">100%</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">索引率</div>
+              </div>
+            </div>
+
+            <!-- flomo 标志性热力图 (Activity Heatmap) -->
+            <div class="mb-5">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-1.5">
+                <span>近期更新热力</span>
+                <span>近三月</span>
+              </div>
+              <div class="grid grid-flow-col grid-rows-4 gap-1 p-2 bg-slate-50 rounded-xl border border-slate-100">
+                <!-- 模拟 28 天热力方块 -->
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/20"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/40"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/70"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/50"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/80"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/30"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/40"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/80"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/60"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/40"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/80"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/30"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+
+                <span class="w-3.5 h-3.5 rounded-xs bg-slate-200"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160]/70"></span>
+                <span class="w-3.5 h-3.5 rounded-xs bg-[#05c160] ring-1 ring-[#05c160] ring-offset-1"></span>
+              </div>
+            </div>
+
+            <!-- 主导航链接 -->
+            <div class="space-y-1 mb-5 text-sm font-medium">
+              <button onclick="selectDrawerNav('feed')" id="drawerNavFeed" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl bg-[#05c160] text-white transition">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+                <span>全部笔记</span>
+              </button>
+              <button onclick="selectDrawerNav('review')" id="drawerNavReview" class="w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-slate-700 hover:bg-slate-100 transition">
+                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span>每日回顾</span>
+              </button>
+            </div>
+
+            <!-- 置顶标签 -->
+            <div class="mb-4">
+              <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">置顶标签</div>
+              <div class="space-y-1 text-xs">
+                <div class="flex justify-between items-center px-2 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 cursor-pointer" onclick="handleDrawerTagClick('project')">
+                  <span># project</span>
+                  <span class="text-slate-400">2 篇</span>
+                </div>
+                <div class="flex justify-between items-center px-2 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 cursor-pointer" onclick="handleDrawerTagClick('reading')">
+                  <span># reading</span>
+                  <span class="text-slate-400">2 篇</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 同步状态卡片 (flomo 风格) -->
+            <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs mb-2">
+              <div class="flex justify-between items-center mb-1.5">
+                <div class="flex items-center space-x-1.5">
+                  <span class="w-2 h-2 rounded-full bg-[#05c160] animate-pulse"></span>
+                  <span class="font-bold text-slate-800" id="drawerSyncEngineText">iCloud Drive 同步</span>
+                </div>
+                <span class="text-[10px] text-slate-400" id="drawerLastSyncText">刚刚</span>
+              </div>
+              <div class="text-[11px] text-slate-500 mb-2.5">
+                状态: <span class="text-slate-700" id="drawerSyncSubText">与 Mac / 远端保持一致</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <button onclick="triggerSync()" class="py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-slate-700 font-medium hover:bg-slate-100 transition text-[11px] flex items-center justify-center gap-1 active:scale-95">
+                  <svg id="drawerSyncIcon" class="w-3.5 h-3.5 text-[#05c160]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                  <span>立即拉取</span>
+                </button>
+                <button onclick="openSyncModal()" class="py-1.5 px-2 bg-[#05c160]/10 border border-[#05c160]/30 rounded-lg text-[#05c160] font-semibold hover:bg-[#05c160]/20 transition text-[11px] flex items-center justify-center gap-1 active:scale-95">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  <span>同步设置</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex justify-between items-center">
+            <span>安全约束: 单向只读拉取</span>
+            <span class="font-mono">零写路径</span>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ==================== 只读阅读器 (Reader View) ==================== -->
+      <div id="readerView" class="absolute inset-0 bg-[#ffffff] z-40 flex flex-col slide-enter">
+        <header class="px-4 py-3 border-b border-black/[0.05] flex items-center justify-between bg-white/90 backdrop-blur">
+          <button onclick="closeReader()" class="flex items-center space-x-1 text-slate-700 hover:text-black font-semibold text-xs">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+            <span id="readerBackText">返回</span>
+          </button>
+          <span class="text-xs font-semibold text-slate-500">笔记详情 (只读)</span>
+          <div class="w-8"></div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-5 no-scrollbar">
+          <div class="mb-4">
+            <h2 id="readerTitle" class="text-lg font-bold text-slate-900 mb-2 leading-snug"></h2>
+            <div class="flex items-center gap-2 text-xs text-slate-400 mb-3">
+              <span id="readerDate"></span>
+              <span>·</span>
+              <span id="readerPath" class="font-mono text-[11px] text-slate-400"></span>
+            </div>
+            <div id="readerTags" class="flex flex-wrap gap-1.5"></div>
+          </div>
+          <hr class="border-slate-100 mb-4">
+          <div id="readerContent" class="text-sm text-slate-800 leading-relaxed space-y-3 font-normal"></div>
+        </div>
+      </div>
+
+
+      <!-- ==================== 规则调整底抽屉 (Rule Editor) ==================== -->
+      <div id="ruleModalOverlay" class="absolute inset-0 bg-black/50 z-50 hidden opacity-0 transition-opacity duration-200 flex flex-col justify-end">
+        <div id="ruleModalContent" class="bg-white rounded-t-3xl p-5 sheet-enter text-slate-800 max-h-[85%] flex flex-col shadow-2xl">
+          <div class="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-base font-bold text-slate-900">配置每日回顾</h2>
+            <button onclick="closeRuleModal()" class="text-xs text-slate-400 hover:text-slate-600">取消</button>
+          </div>
+
+          <div class="space-y-4 overflow-y-auto no-scrollbar flex-1 pr-1 pb-4 text-xs">
+            <!-- 1. 内容范围 -->
+            <div>
+              <label class="block font-bold text-slate-700 mb-2">1. 内容范围</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" class="rule-scope-btn p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium" data-scope="all" onclick="selectScope('all')">
+                  <div class="text-slate-900 font-bold">全部笔记</div>
+                  <div class="text-[10px] text-slate-400">不限标签，全库抽取</div>
+                </button>
+                <button type="button" class="rule-scope-btn p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium" data-scope="includingTag" onclick="selectScope('includingTag')">
+                  <div class="text-slate-900 font-bold">含指定标签</div>
+                  <div class="text-[10px] text-slate-400">聚焦特定专题</div>
+                </button>
+                <button type="button" class="rule-scope-btn p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium" data-scope="excludingTag" onclick="selectScope('excludingTag')">
+                  <div class="text-slate-900 font-bold">排除指定标签</div>
+                  <div class="text-[10px] text-slate-400">跳过归档或琐事</div>
+                </button>
+                <button type="button" class="rule-scope-btn p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium" data-scope="untagged" onclick="selectScope('untagged')">
+                  <div class="text-slate-900 font-bold">仅无标签</div>
+                  <div class="text-[10px] text-slate-400">回顾待分类笔记</div>
+                </button>
+              </div>
+
+              <!-- 指定标签选项 -->
+              <div id="targetTagContainer" class="mt-2.5 hidden">
+                <label id="targetTagLabel" class="block text-[11px] text-slate-500 mb-1 font-medium">选择目标标签:</label>
+                <select id="targetTagSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-[#05c160]">
+                  <option value="fleeting">#fleeting</option>
+                  <option value="reading">#reading</option>
+                  <option value="project">#project</option>
+                  <option value="archive">#archive</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 2. 时间范围 -->
+            <div>
+              <label class="block font-bold text-slate-700 mb-2">2. 时间范围（按修改时间）</label>
+              <div class="grid grid-cols-3 gap-2 text-center font-medium">
+                <button type="button" class="rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50" data-time="pastMonth" onclick="selectTime('pastMonth')">近一个月</button>
+                <button type="button" class="rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50" data-time="pastThreeMonths" onclick="selectTime('pastThreeMonths')">近三个月</button>
+                <button type="button" class="rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50" data-time="pastSixMonths" onclick="selectTime('pastSixMonths')">近半年</button>
+                <button type="button" class="rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50" data-time="pastYear" onclick="selectTime('pastYear')">近一年</button>
+                <button type="button" class="rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50 col-span-2" data-time="all" onclick="selectTime('all')">全部历史</button>
+              </div>
+            </div>
+
+            <!-- 3. 每日数量 -->
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="font-bold text-slate-700">3. 每日抽取数量</label>
+                <span id="dailyCountDisplay" class="font-bold text-[#05c160] bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">8 条</span>
+              </div>
+              <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-1.5">
+                <button type="button" onclick="changeCount(-4)" class="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-800 font-bold hover:bg-slate-100 transition">-</button>
+                <div class="text-[11px] text-slate-400">步长 4 条（允许 4 ~ 24 条）</div>
+                <button type="button" onclick="changeCount(4)" class="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-800 font-bold hover:bg-slate-100 transition">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <div class="pt-3 border-t border-slate-100">
+            <button id="saveRuleBtn" onclick="requestRuleConfirmation()" class="w-full bg-[#05c160] hover:bg-[#04ab55] active:scale-[0.99] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#05c160]/20">
+              确认并更新回顾
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 浮层: 同步设置 (Sync Settings Modal) ==================== -->
+      <div id="syncModalOverlay" class="absolute inset-0 bg-black/50 z-50 hidden opacity-0 transition-opacity duration-200 flex flex-col justify-end">
+        <div id="syncModalContent" class="bg-white rounded-t-3xl p-5 sheet-enter text-slate-800 max-h-[90%] flex flex-col shadow-2xl">
+          <div class="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <div class="flex justify-between items-center mb-3">
+            <div class="flex items-center gap-1.5">
+              <span class="text-base font-bold text-slate-900">同步与远程服务设置</span>
+              <span class="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-0.5 rounded border border-emerald-200">单向只读</span>
+            </div>
+            <button onclick="closeSyncModal()" class="text-xs text-slate-400 hover:text-slate-600">关闭</button>
+          </div>
+
+          <div class="space-y-4 overflow-y-auto no-scrollbar flex-1 pr-1 pb-4 text-xs">
+            
+            <!-- 安全机制提示条 -->
+            <div class="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl text-amber-800 text-[11px] leading-relaxed">
+              <span class="font-bold">🛡️ 移动端安全保障：</span>手机端仅执行<strong>只读拉取（Pull Only）</strong>与离线索引更新，绝不上传或覆写远端 Vault，彻底免除丢文件风险。
+            </div>
+
+            <!-- 同步方式选择 -->
+            <div>
+              <label class="block font-bold text-slate-700 mb-2">1. 同步方式</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="syncTypeIcloudBtn" class="p-2.5 rounded-xl border-2 border-[#05c160] bg-[#05c160]/10 text-left font-medium" onclick="selectSyncType('icloud')">
+                  <div class="flex items-center gap-1 text-slate-900 font-bold">
+                    <span>☁️ iCloud Drive</span>
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">iOS 原生后台无感同步</div>
+                </button>
+                <button type="button" id="syncTypeWebdavBtn" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium" onclick="selectSyncType('webdav')">
+                  <div class="flex items-center gap-1 text-slate-900 font-bold">
+                    <span>🌐 WebDAV 服务</span>
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">坚果云 / Nextcloud / 自建</div>
+                </button>
+              </div>
+            </div>
+
+            <!-- WebDAV 参数配置表单 (当选 WebDAV 时展开) -->
+            <div id="webdavConfigForm" class="space-y-2.5 hidden bg-slate-50 border border-slate-200/80 p-3 rounded-2xl">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">WebDAV 服务器地址</label>
+                <input id="syncServerUrl" type="text" value="https://dav.jianguoyun.com/dav/" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-[#05c160]">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">账户 / 邮箱</label>
+                <input id="syncUsername" type="text" value="ivows@example.com" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-[#05c160]">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">应用授权密码</label>
+                <input id="syncPassword" type="password" value="secret_app_key" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-[#05c160]">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">远端 Vault 存储目录</label>
+                <input id="syncRemotePath" type="text" value="/Obsidian/MyVault" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-[#05c160]">
+              </div>
+              <button type="button" onclick="testWebDAVConnection()" id="testConnBtn" class="w-full py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition text-[11px] flex items-center justify-center gap-1">
+                <span>测试连接与凭据</span>
+              </button>
+            </div>
+
+            <!-- iCloud 路径说明 (当选 iCloud 时展示) -->
+            <div id="icloudInfoBox" class="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl">
+              <div class="text-[11px] text-slate-600 mb-1 font-semibold">已绑定的 iCloud 目录:</div>
+              <div class="font-mono text-[10px] text-slate-700 bg-white p-2 rounded-lg border border-slate-200 truncate">
+                iCloud Drive/Obsidian/BearObs-Vault/
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1.5 leading-normal">
+                通过系统级 Security-Scoped Bookmark 授权，文件由 iOS 后台自动下载与比对。
+              </div>
+            </div>
+
+            <!-- 同步策略选项 -->
+            <div>
+              <label class="block font-bold text-slate-700 mb-2">2. 自动化拉取策略</label>
+              <div class="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                <label class="flex items-center justify-between cursor-pointer">
+                  <span class="text-slate-800">打开 App 时自动检测更新</span>
+                  <input type="checkbox" checked class="w-4 h-4 accent-[#05c160] rounded">
+                </label>
+                <hr class="border-slate-200/60">
+                <label class="flex items-center justify-between cursor-pointer">
+                  <span class="text-slate-800">仅在 Wi-Fi 网络下同步大附件</span>
+                  <input type="checkbox" checked class="w-4 h-4 accent-[#05c160] rounded">
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 保存按钮 -->
+          <div class="pt-3 border-t border-slate-100 flex gap-2">
+            <button onclick="saveSyncSettings()" class="flex-1 bg-[#05c160] hover:bg-[#04ab55] active:scale-[0.99] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-[#05c160]/20">
+              保存配置并立即同步
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 顶部灵动胶囊: 同步状态 Toast ==================== -->
+      <div id="syncToast" class="absolute top-10 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white backdrop-blur px-3.5 py-1.5 rounded-full text-xs font-medium shadow-xl border border-white/10 z-50 flex items-center space-x-2 transition-all duration-300 opacity-0 -translate-y-4 pointer-events-none">
+        <svg id="syncToastSpinner" class="w-3.5 h-3.5 text-[#05c160] animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+        <span id="syncToastMsg">正在拉取远端更新...</span>
+      </div>
+
+    </main>
+
+    <!-- 底部 TabBar (三个入口：笔记、回顾、标签) -->
+    <nav class="h-13 bg-[#ffffff]/95 backdrop-blur border-t border-black/[0.06] px-6 flex justify-around items-center z-20 select-none">
+      <button onclick="switchTab('feed')" id="navFeed" class="flex flex-col items-center text-[#05c160] transition-colors">
+        <svg class="w-5 h-5 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+        <span class="text-[10px] font-bold">笔记</span>
+      </button>
+
+      <button onclick="switchTab('review')" id="navReview" class="flex flex-col items-center text-slate-400 hover:text-slate-600 transition-colors">
+        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span class="text-[10px] font-medium">回顾</span>
+      </button>
+
+      <button onclick="switchTab('tags')" id="navTags" class="flex flex-col items-center text-slate-400 hover:text-slate-600 transition-colors">
+        <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+        <span class="text-[10px] font-medium">标签</span>
+      </button>
+    </nav>
+
+    <!-- 底部触控指示条 -->
+    <div class="h-3.5 bg-[#ffffff] flex items-center justify-center">
+      <div class="w-32 h-1 bg-slate-300 rounded-full"></div>
+    </div>
+  </div>
+
+  <!-- 底部关键设计与 flomo 映射说明 -->
+  <aside class="w-full max-w-[390px] mt-4 p-4 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300 space-y-2">
+    <div class="font-bold text-white flex items-center gap-1.5">
+      <span class="text-[#05c160]">●</span> 对标 flomo 截图的设计细节与 REQ-005 映射：
+    </div>
+    <ul class="list-disc list-inside space-y-1 text-slate-400 leading-normal text-[11px]">
+      <li><strong class="text-slate-200">同步与远程服务</strong>：支持 <code class="text-slate-200">iCloud Drive</code> 与 <code class="text-slate-200">WebDAV（坚果云等）</code> 配置，点击顶部/抽屉 <code class="text-[#05c160]">🔄</code> 触发单向安全拉取。</li>
+      <li><strong class="text-slate-200">卡片形制</strong>：白底圆角卡片、左上角精简时间戳、右上角 <code class="text-slate-300">···</code> 菜单，正文截断 140 字。</li>
+      <li><strong class="text-slate-200">标签样式</strong>：复刻 flomo 浅蓝底蓝字胶囊（如 <code class="text-blue-300">#捷径输入</code> <code class="text-blue-300">#旅行</code>），点标签直接精确过滤。</li>
+      <li><strong class="text-slate-200">侧边抽屉</strong>：点击左上角 ☰ 展开，包含笔记/标签统计、活动热力图、同步卡片与分类。</li>
+      <li><strong class="text-slate-200">只读契约</strong>：完全移除写卡入口，阅读器仅展示 Markdown 渲染，避免任何覆盖 Vault 风险。</li>
+    </ul>
+  </aside>
+
+  <script>
+    // ================= 模拟数据 =================
+    const MOCK_NOTES = [
+      {
+        id: "1",
+        path: "Daily/2026-11-01.md",
+        title: "",
+        dateString: "2025-01-31 11:30",
+        rawExcerpt: "犹其余事",
+        tags: ["thinking"],
+        timestamp: Date.now() - 3600000,
+        isReadable: true,
+        fullContent: `犹其余事。\n\n卡片笔记在手机端的最核心价值不是生产，而是消费与偶遇。`
+      },
+      {
+        id: "2",
+        path: "History/Tuoba-Tao.md",
+        title: "",
+        dateString: "2025-01-22 19:18",
+        rawExcerpt: "具体问题要具体分析，冯太后有一点比不了，拓跋浚跟常太后的感情铁，襁褓中结交，斗争中成长，政变中升华，皇位都是你常妈给你抢来的。",
+        tags: ["history", "reading"],
+        timestamp: Date.now() - 86400000 * 9,
+        isReadable: true,
+        fullContent: `具体问题要具体分析，冯太后有一点比不了，拓跋浚跟常太后的感情铁，襁褓中结交，斗争中成长，政变中升华，皇位都是你常妈给你抢来的。`
+      },
+      {
+        id: "3",
+        path: "Travel/Bangkok-Metro.md",
+        title: "",
+        dateString: "2025-01-13 20:10",
+        rawExcerpt: "曼谷地铁：metroguides.info... 实用交通备忘，从素万那普机场到市中心的快线与换乘站点梳理。",
+        tags: ["捷径输入", "旅行"],
+        timestamp: Date.now() - 86400000 * 18,
+        isReadable: true,
+        fullContent: `曼谷地铁：metroguides.info... 实用交通备忘，从素万那普机场到市中心的快线与换乘站点梳理。`
+      },
+      {
+        id: "4",
+        path: "Projects/BearObs/iOS-Review.md",
+        title: "关于 BearObs 移动端卡片流架构",
+        dateString: "2024-12-13 10:52",
+        rawExcerpt: "www.fwhyy.com... 个人博客参考。手机端不引入任何向 Vault 的写入流程，保持纯粹的只读消费。抽卡批次采用沙箱文件保存，可重建，不碰 index.sqlite。",
+        tags: ["捷径输入", "project", "ios"],
+        timestamp: Date.now() - 86400000 * 48,
+        isReadable: true,
+        fullContent: `# 关于 BearObs 移动端卡片流架构\n\nwww.fwhyy.com... 个人博客参考。\n\n手机端不引入任何向 Vault 的写入流程，保持纯粹的只读消费。抽卡批次采用沙箱文件保存，可重建，不碰 index.sqlite。`
+      },
+      {
+        id: "5",
+        path: "Projects/Subprojects/Mobile.md",
+        title: "层级标签精确匹配测试",
+        dateString: "2024-12-10 14:20",
+        rawExcerpt: "本条备忘仅打上了 project/mobile 标签。当用户在卡片流或标签页筛选 project 时，根据 REQ-001/005 的精确匹配规则，本条不应被选中。",
+        tags: ["project/mobile"],
+        timestamp: Date.now() - 86400000 * 52,
+        isReadable: true,
+        fullContent: `本条备忘仅打上了 project/mobile 标签。当用户在卡片流或标签页筛选 project 时，根据 REQ-001/005 的精确匹配规则，本条不应被选中。`
+      },
+      {
+        id: "6",
+        path: "Archive/Placeholder-Failed.md",
+        title: "损坏或未下载占位文件",
+        dateString: "2024-11-20 09:15",
+        rawExcerpt: "这是测试用的损坏笔记。",
+        tags: ["archive"],
+        timestamp: Date.now() - 86400000 * 70,
+        isReadable: false,
+        fullContent: ""
+      },
+      {
+        id: "7",
+        path: "Reading/Thinking-Fast-and-Slow.md",
+        title: "思考，快与慢：大脑的双系统机制",
+        dateString: "2024-10-15 16:04",
+        rawExcerpt: "系统1是直觉驱动的，自动化、无意识、反应极快，几乎不消耗注意力；系统2是理性驱动的，需要集中精神、耗费脑力进行复杂的推理和计算。绝大多数偏见源自系统1的联想机制。",
+        tags: ["reading", "psychology", "thinking"],
+        timestamp: Date.now() - 86400000 * 105,
+        isReadable: true,
+        fullContent: `# 思考，快与慢：大脑的双系统机制\n\n系统1是直觉驱动的，自动化、无意识、反应极快，几乎不消耗注意力；系统2是理性驱动的，需要集中精神、耗费脑力进行复杂的推理和计算。绝大多数偏见源自系统1的联想机制。`
+      }
+    ];
+
+    // ================= 状态 =================
+    let currentTab = "feed";
+    let activeTagFilter = null;
+    let searchQuery = "";
+    let sortMode = "mod_desc";
+    let currentTheme = "light";
+
+    let reviewRule = {
+      contentScope: "all",
+      targetTag: "捷径输入",
+      timeScope: "pastThreeMonths",
+      dailyCount: 8
+    };
+
+    // 格式化摘要（上限 140 字符）
+    function formatExcerpt(note) {
+      if (!note.isReadable) return "这条笔记暂时无法读取";
+      let text = note.rawExcerpt || "";
+      if (text.length > 140) {
+        return text.slice(0, 140) + "…";
+      }
+      return text;
+    }
+
+    function formatTitle(note) {
+      if (note.title && note.title.trim().length > 0) return note.title;
+      const parts = note.path.split("/");
+      return parts[parts.length - 1].replace(/\.md$/, "");
+    }
+
+    // ================= 初始化 =================
+    function init() {
+      renderFeedCards();
+      renderReviewCards();
+      renderTagsGrid();
+      updateRuleSummaryUI();
+    }
+
+    // 渲染卡片流 (严格对标 flomo 卡片样式)
+    function renderFeedCards() {
+      const container = document.getElementById("cardStream");
+      container.innerHTML = "";
+
+      let list = [...MOCK_NOTES];
+
+      // 标签过滤（精确匹配）
+      if (activeTagFilter) {
+        list = list.filter(n => n.tags && n.tags.includes(activeTagFilter));
+      }
+
+      // 搜索过滤
+      if (searchQuery.trim().length > 0) {
+        const q = searchQuery.toLowerCase();
+        list = list.filter(n => 
+          formatTitle(n).toLowerCase().includes(q) || 
+          (n.rawExcerpt && n.rawExcerpt.toLowerCase().includes(q)) ||
+          n.tags.some(t => t.toLowerCase().includes(q))
+        );
+      }
+
+      // 排序
+      if (sortMode === "mod_asc") {
+        list.sort((a, b) => a.timestamp - b.timestamp);
+      } else {
+        list.sort((a, b) => b.timestamp - a.timestamp);
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="py-16 text-center text-slate-400 text-xs">
+            <svg class="w-8 h-8 mx-auto mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>未找到符合条件的卡片</span>
+          </div>
+        `;
+        return;
+      }
+
+      list.forEach(note => {
+        const cardEl = createFlomoCard(note, "feed");
+        container.appendChild(cardEl);
+      });
+    }
+
+    // 创建 flomo 经典卡片 DOM
+    function createFlomoCard(note, context) {
+      const card = document.createElement("div");
+      card.className = "bg-white rounded-2xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] border border-black/[0.04] transition active:scale-[0.995] cursor-pointer";
+
+      const title = formatTitle(note);
+      const excerpt = formatExcerpt(note);
+      const hasExplicitTitle = note.title && note.title.trim().length > 0;
+
+      // 标签胶囊 (flomo 蓝底蓝字风格)
+      let tagsHtml = "";
+      if (note.tags && note.tags.length > 0) {
+        const visibleTags = note.tags.slice(0, 3);
+        const extraCount = note.tags.length - 3;
+
+        const tagBadges = visibleTags.map(tag => `
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#eff6ff] text-[#2563eb] hover:bg-blue-100 transition" 
+                onclick="event.stopPropagation(); setTagFilter('${tag}')">
+            #${tag}
+          </span>
+        `).join("");
+
+        const extraBadge = extraCount > 0 ? `
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-500">
+            +${extraCount}
+          </span>
+        ` : "";
+
+        tagsHtml = `<div class="flex flex-wrap gap-1.5 mt-3">${tagBadges}${extraBadge}</div>`;
+      }
+
+      const isFailedNote = !note.isReadable;
+      const textStyle = isFailedNote ? "text-amber-600/90 italic font-medium" : "text-slate-800";
+
+      card.innerHTML = `
+        <!-- 卡片顶部：时间戳 + 更多操作点点点 -->
+        <div class="flex justify-between items-center text-xs text-slate-400 mb-2">
+          <span class="text-[11.5px] tracking-tight">${note.dateString}</span>
+          <button class="p-1 -mr-1 text-slate-400 hover:text-slate-600 rounded" onclick="event.stopPropagation(); alert('路径: ' + '${note.path}')">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 12a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          </button>
+        </div>
+
+        <!-- 卡片标题（有则显示） -->
+        ${hasExplicitTitle ? `<h3 class="font-bold text-sm text-slate-900 mb-1 leading-snug">${title}</h3>` : ''}
+
+        <!-- 卡片正文摘要 (140 字截断) -->
+        <p class="text-[13px] ${textStyle} leading-relaxed">${excerpt}</p>
+
+        <!-- 标签栏 -->
+        ${tagsHtml}
+      `;
+
+      card.onclick = () => openReader(note, context === "feed" ? "全部笔记" : "每日回顾");
+      return card;
+    }
+
+    // 标签筛选
+    function setTagFilter(tag) {
+      activeTagFilter = tag;
+      document.getElementById("filterPillBar").classList.remove("hidden");
+      document.getElementById("activeFilterBadge").innerText = `#${tag}`;
+      document.getElementById("currentFilterTitle").innerText = `#${tag}`;
+      renderFeedCards();
+      if (currentTab !== "feed") switchTab("feed");
+    }
+
+    function clearTagFilter() {
+      activeTagFilter = null;
+      document.getElementById("filterPillBar").classList.add("hidden");
+      document.getElementById("currentFilterTitle").innerText = "全部笔记";
+      renderFeedCards();
+    }
+
+    // 搜索
+    function toggleSearchBar() {
+      const bar = document.getElementById("searchBarContainer");
+      bar.classList.toggle("hidden");
+      if (!bar.classList.contains("hidden")) {
+        document.getElementById("flomoSearchInput").focus();
+      }
+    }
+
+    function handleSearch(val) {
+      searchQuery = val;
+      const btn = document.getElementById("clearSearchBtn");
+      if (val.length > 0) btn.classList.remove("hidden");
+      else btn.classList.add("hidden");
+      renderFeedCards();
+    }
+
+    function clearSearch() {
+      const input = document.getElementById("flomoSearchInput");
+      input.value = "";
+      handleSearch("");
+      input.focus();
+    }
+
+    function toggleSortMenu() {
+      const menu = document.getElementById("sortMenuDropdown");
+      menu.classList.toggle("hidden");
+    }
+
+    function selectSort(mode) {
+      sortMode = mode;
+      toggleSortMenu();
+      renderFeedCards();
+    }
+
+    function openFilterActionSheet() {
+      openRuleModal();
+    }
+
+    // ================= 每日回顾 =================
+    function renderReviewCards() {
+      const container = document.getElementById("reviewStream");
+      container.innerHTML = "";
+
+      let candidates = MOCK_NOTES.filter(n => n.isReadable);
+      const now = Date.now();
+      const monthMs = 30 * 86400000;
+
+      if (reviewRule.timeScope === "pastMonth") {
+        candidates = candidates.filter(n => (now - n.timestamp) <= monthMs);
+      } else if (reviewRule.timeScope === "pastThreeMonths") {
+        candidates = candidates.filter(n => (now - n.timestamp) <= monthMs * 3);
+      } else if (reviewRule.timeScope === "pastSixMonths") {
+        candidates = candidates.filter(n => (now - n.timestamp) <= monthMs * 6);
+      } else if (reviewRule.timeScope === "pastYear") {
+        candidates = candidates.filter(n => (now - n.timestamp) <= monthMs * 12);
+      }
+
+      if (reviewRule.contentScope === "includingTag") {
+        candidates = candidates.filter(n => n.tags && n.tags.includes(reviewRule.targetTag));
+      } else if (reviewRule.contentScope === "excludingTag") {
+        candidates = candidates.filter(n => !n.tags || !n.tags.includes(reviewRule.targetTag));
+      } else if (reviewRule.contentScope === "untagged") {
+        candidates = candidates.filter(n => !n.tags || n.tags.length === 0);
+      }
+
+      const totalCount = candidates.length;
+      const batch = candidates.slice(0, reviewRule.dailyCount);
+
+      if (batch.length === 0) {
+        container.innerHTML = `
+          <div class="py-16 text-center text-slate-400 text-xs px-4">
+            <div class="text-sm font-bold text-slate-700 mb-1">没有符合规则的笔记</div>
+            <p class="text-slate-400 mb-3">当前规则下未筛选到候选笔记</p>
+            <button onclick="openRuleModal()" class="px-3 py-1.5 rounded-lg bg-[#05c160] text-white font-medium">调整规则</button>
+          </div>
+        `;
+        return;
+      }
+
+      batch.forEach(note => {
+        const el = createFlomoCard(note, "review");
+        container.appendChild(el);
+      });
+
+      const footer = document.createElement("div");
+      footer.className = "text-center py-4 text-[11px] text-slate-400";
+      if (totalCount < reviewRule.dailyCount) {
+        footer.innerText = `符合规则的只有 ${totalCount} 条，已全部呈现`;
+      } else {
+        footer.innerText = `— 今日 ${batch.length} 条回顾已完成 · 明日 00:00 自动换新 —`;
+      }
+      container.appendChild(footer);
+    }
+
+    // 标签网格 Tab
+    function renderTagsGrid() {
+      const container = document.getElementById("tagGridContainer");
+      container.innerHTML = "";
+
+      const tagMap = {};
+      MOCK_NOTES.forEach(n => {
+        if (n.tags) n.tags.forEach(t => tagMap[t] = (tagMap[t] || 0) + 1);
+      });
+
+      Object.keys(tagMap).sort().forEach(tag => {
+        const item = document.createElement("div");
+        item.className = "flex justify-between items-center p-3 rounded-xl bg-white border border-black/[0.04] shadow-xs cursor-pointer hover:bg-slate-50 transition active:scale-[0.99]";
+        item.innerHTML = `
+          <div class="flex items-center gap-1.5">
+            <span class="text-[#05c160] font-bold text-sm">#</span>
+            <span class="text-xs font-semibold text-slate-800">${tag}</span>
+          </div>
+          <span class="text-xs text-slate-400 font-medium">${tagMap[tag]} 条</span>
+        `;
+        item.onclick = () => setTagFilter(tag);
+        container.appendChild(item);
+      });
+    }
+
+    // ================= 抽屉控制 =================
+    function openDrawer() {
+      const drawer = document.getElementById("sideDrawer");
+      drawer.classList.add("drawer-open");
+      document.getElementById("drawerOverlay").classList.add("opacity-100");
+    }
+
+    function closeDrawer() {
+      const drawer = document.getElementById("sideDrawer");
+      drawer.classList.remove("drawer-open");
+      document.getElementById("drawerOverlay").classList.remove("opacity-100");
+    }
+
+    function selectDrawerNav(tab) {
+      closeDrawer();
+      switchTab(tab);
+    }
+
+    function handleDrawerTagClick(tag) {
+      closeDrawer();
+      setTagFilter(tag);
+    }
+
+    // ================= 阅读器 =================
+    function openReader(note, from) {
+      const reader = document.getElementById("readerView");
+      document.getElementById("readerBackText").innerText = from;
+      document.getElementById("readerTitle").innerText = formatTitle(note);
+      document.getElementById("readerDate").innerText = note.dateString;
+      document.getElementById("readerPath").innerText = note.path;
+
+      const tagC = document.getElementById("readerTags");
+      tagC.innerHTML = "";
+      if (note.tags) {
+        note.tags.forEach(t => {
+          const s = document.createElement("span");
+          s.className = "px-2 py-0.5 rounded-md text-[11px] bg-[#eff6ff] text-[#2563eb] font-medium";
+          s.innerText = `#${t}`;
+          tagC.appendChild(s);
+        });
+      }
+
+      const contentEl = document.getElementById("readerContent");
+      if (!note.isReadable) {
+        contentEl.innerHTML = `<div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">这条笔记暂时无法读取（损坏或 iCloud 占位）。</div>`;
+      } else {
+        contentEl.innerHTML = note.fullContent.split("\n\n").map(p => {
+          if (p.startsWith("# ")) return `<h1 class="text-base font-bold text-slate-900 mt-2">${p.replace("# ", "")}</h1>`;
+          return `<p class="text-slate-800">${p}</p>`;
+        }).join("");
+      }
+
+      reader.classList.add("slide-active");
+    }
+
+    function closeReader() {
+      document.getElementById("readerView").classList.remove("slide-active");
+    }
+
+    // ================= 规则调整 =================
+    let tempRule = { ...reviewRule };
+
+    function openRuleModal() {
+      tempRule = { ...reviewRule };
+      updateRuleModalUI();
+      const overlay = document.getElementById("ruleModalOverlay");
+      const content = document.getElementById("ruleModalContent");
+      overlay.classList.remove("hidden");
+      requestAnimationFrame(() => {
+        overlay.classList.add("opacity-100");
+        content.classList.add("sheet-active");
+      });
+    }
+
+    function closeRuleModal() {
+      const overlay = document.getElementById("ruleModalOverlay");
+      const content = document.getElementById("ruleModalContent");
+      overlay.classList.remove("opacity-100");
+      content.classList.remove("sheet-active");
+      setTimeout(() => overlay.classList.add("hidden"), 220);
+    }
+
+    function selectScope(s) { tempRule.contentScope = s; updateRuleModalUI(); }
+    function selectTime(t) { tempRule.timeScope = t; updateRuleModalUI(); }
+    function changeCount(d) {
+      const next = tempRule.dailyCount + d;
+      if (next >= 4 && next <= 24) {
+        tempRule.dailyCount = next;
+        updateRuleModalUI();
+      }
+    }
+
+    function updateRuleModalUI() {
+      document.querySelectorAll(".rule-scope-btn").forEach(btn => {
+        const s = btn.getAttribute("data-scope");
+        if (s === tempRule.contentScope) {
+          btn.className = "rule-scope-btn p-2.5 rounded-xl border-2 border-[#05c160] bg-[#05c160]/10 text-left font-medium text-slate-900";
+        } else {
+          btn.className = "rule-scope-btn p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium text-slate-700";
+        }
+      });
+
+      const tagContainer = document.getElementById("targetTagContainer");
+      if (tempRule.contentScope === "includingTag" || tempRule.contentScope === "excludingTag") {
+        tagContainer.classList.remove("hidden");
+      } else {
+        tagContainer.classList.add("hidden");
+      }
+
+      document.querySelectorAll(".rule-time-btn").forEach(btn => {
+        const t = btn.getAttribute("data-time");
+        const isCol2 = btn.classList.contains("col-span-2");
+        if (t === tempRule.timeScope) {
+          btn.className = `rule-time-btn p-2 rounded-xl border-2 border-[#05c160] bg-[#05c160]/10 font-bold text-slate-900 ${isCol2 ? "col-span-2" : ""}`;
+        } else {
+          btn.className = `rule-time-btn p-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 ${isCol2 ? "col-span-2" : ""}`;
+        }
+      });
+
+      document.getElementById("dailyCountDisplay").innerText = `${tempRule.dailyCount} 条`;
+    }
+
+    function requestRuleConfirmation() {
+      if (tempRule.contentScope === "includingTag" || tempRule.contentScope === "excludingTag") {
+        tempRule.targetTag = document.getElementById("targetTagSelect").value;
+      }
+
+      const confirmed = confirm("按新规则重新抽取今日回顾？\n\n确认后当日批次将重新生成，原批次作废。");
+      if (confirmed) {
+        reviewRule = { ...tempRule };
+        updateRuleSummaryUI();
+        renderReviewCards();
+        closeRuleModal();
+      }
+    }
+
+    function updateRuleSummaryUI() {
+      let scopeStr = "全部笔记";
+      if (reviewRule.contentScope === "includingTag") scopeStr = `含 #${reviewRule.targetTag}`;
+      if (reviewRule.contentScope === "excludingTag") scopeStr = `排除 #${reviewRule.targetTag}`;
+      if (reviewRule.contentScope === "untagged") scopeStr = "无标签笔记";
+
+      const timeMap = {
+        pastMonth: "近一个月",
+        pastThreeMonths: "近三个月",
+        pastSixMonths: "近半年",
+        pastYear: "近一年",
+        all: "全部时间"
+      };
+
+      document.getElementById("reviewRuleText").innerText = 
+        `${scopeStr} · ${timeMap[reviewRule.timeScope]} · ${reviewRule.dailyCount} 条`;
+    }
+
+    // ================= 导航切换 =================
+    function switchTab(tabId) {
+      currentTab = tabId;
+      document.getElementById("tabFeed").classList.add("hidden");
+      document.getElementById("tabReview").classList.add("hidden");
+      document.getElementById("tabTags").classList.add("hidden");
+
+      ["navFeed", "navReview", "navTags"].forEach(id => {
+        const el = document.getElementById(id);
+        el.className = "flex flex-col items-center text-slate-400 hover:text-slate-600 transition-colors";
+      });
+
+      if (tabId === "feed") {
+        document.getElementById("tabFeed").classList.remove("hidden");
+        document.getElementById("navFeed").className = "flex flex-col items-center text-[#05c160] transition-colors font-bold";
+      } else if (tabId === "review") {
+        document.getElementById("tabReview").classList.remove("hidden");
+        document.getElementById("navReview").className = "flex flex-col items-center text-[#05c160] transition-colors font-bold";
+      } else if (tabId === "tags") {
+        document.getElementById("tabTags").classList.remove("hidden");
+        document.getElementById("navTags").className = "flex flex-col items-center text-[#05c160] transition-colors font-bold";
+      }
+    }
+
+    function toggleTheme() {
+      const frame = document.getElementById("deviceFrame");
+      if (currentTheme === "light") {
+        currentTheme = "dark";
+        frame.style.backgroundColor = "#121417";
+        frame.classList.replace("text-slate-900", "text-slate-100");
+      } else {
+        currentTheme = "light";
+        frame.style.backgroundColor = "#f5f6f8";
+        frame.classList.replace("text-slate-100", "text-slate-900");
+      }
+    }
+
+    function resetData() {
+      reviewRule = {
+        contentScope: "all",
+        targetTag: "捷径输入",
+        timeScope: "pastThreeMonths",
+        dailyCount: 8
+      };
+      activeTagFilter = null;
+      searchQuery = "";
+      clearTagFilter();
+      switchTab("feed");
+      closeReader();
+      updateRuleSummaryUI();
+      renderFeedCards();
+      renderReviewCards();
+    }
+
+    // ================= 同步服务逻辑 =================
+    let currentSyncType = "icloud"; // icloud | webdav
+    let isSyncing = false;
+
+    function selectSyncType(type) {
+      currentSyncType = type;
+      const icloudBtn = document.getElementById("syncTypeIcloudBtn");
+      const webdavBtn = document.getElementById("syncTypeWebdavBtn");
+      const webdavForm = document.getElementById("webdavConfigForm");
+      const icloudBox = document.getElementById("icloudInfoBox");
+
+      if (type === "icloud") {
+        icloudBtn.className = "p-2.5 rounded-xl border-2 border-[#05c160] bg-[#05c160]/10 text-left font-medium";
+        webdavBtn.className = "p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium";
+        webdavForm.classList.add("hidden");
+        icloudBox.classList.remove("hidden");
+      } else {
+        webdavBtn.className = "p-2.5 rounded-xl border-2 border-[#05c160] bg-[#05c160]/10 text-left font-medium";
+        icloudBtn.className = "p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-left font-medium";
+        webdavForm.classList.remove("hidden");
+        icloudBox.classList.add("hidden");
+      }
+    }
+
+    function openSyncModal() {
+      closeDrawer();
+      const overlay = document.getElementById("syncModalOverlay");
+      const content = document.getElementById("syncModalContent");
+      overlay.classList.remove("hidden");
+      requestAnimationFrame(() => {
+        overlay.classList.add("opacity-100");
+        content.classList.add("sheet-active");
+      });
+    }
+
+    function closeSyncModal() {
+      const overlay = document.getElementById("syncModalOverlay");
+      const content = document.getElementById("syncModalContent");
+      overlay.classList.remove("opacity-100");
+      content.classList.remove("sheet-active");
+      setTimeout(() => overlay.classList.add("hidden"), 220);
+    }
+
+    function testWebDAVConnection() {
+      const btn = document.getElementById("testConnBtn");
+      btn.innerHTML = `<span class="text-[#05c160] animate-pulse">正在连接验证...</span>`;
+      setTimeout(() => {
+        btn.innerHTML = `<span class="text-[#05c160] font-bold">✓ 认证成功 (HTTP 207 Multi-Status)</span>`;
+      }, 700);
+    }
+
+    function saveSyncSettings() {
+      closeSyncModal();
+      if (currentSyncType === "webdav") {
+        document.getElementById("drawerSyncEngineText").innerText = "WebDAV 坚果云同步";
+        document.getElementById("drawerSyncSubText").innerText = "单向拉取: dav.jianguoyun.com";
+      } else {
+        document.getElementById("drawerSyncEngineText").innerText = "iCloud Drive 同步";
+        document.getElementById("drawerSyncSubText").innerText = "与 Mac / 远端保持一致";
+      }
+      triggerSync();
+    }
+
+    function triggerSync() {
+      if (isSyncing) return;
+      isSyncing = true;
+
+      // 旋转抽屉和顶部的同步按钮
+      const topBtn = document.getElementById("topSyncBtn");
+      const drawerIcon = document.getElementById("drawerSyncIcon");
+      if (topBtn) topBtn.classList.add("animate-spin");
+      if (drawerIcon) drawerIcon.classList.add("animate-spin");
+
+      // 弹出灵动 Toast
+      const toast = document.getElementById("syncToast");
+      const toastMsg = document.getElementById("syncToastMsg");
+      const spinner = document.getElementById("syncToastSpinner");
+
+      toastMsg.innerText = currentSyncType === "webdav" ? "正在通过 WebDAV 拉取远端 Vault..." : "正在检测 iCloud Drive 变化...";
+      spinner.classList.remove("hidden");
+      toast.classList.remove("opacity-0", "-translate-y-4");
+
+      setTimeout(() => {
+        // 完成同步
+        spinner.classList.add("hidden");
+        toastMsg.innerHTML = `<span class="text-[#05c160] font-bold">✓ 同步完成</span>：已拉取最新 345 篇笔记`;
+        document.getElementById("drawerLastSyncText").innerText = "刚刚";
+
+        // 刷新列表
+        renderFeedCards();
+        renderReviewCards();
+
+        setTimeout(() => {
+          toast.classList.add("opacity-0", "-translate-y-4");
+          if (topBtn) topBtn.classList.remove("animate-spin");
+          if (drawerIcon) drawerIcon.classList.remove("animate-spin");
+          isSyncing = false;
+        }, 1500);
+      }, 1200);
+    }
+
+    init();
+  </script>
+</body>
+</html>
