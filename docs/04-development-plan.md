@@ -67,7 +67,7 @@ M0-M4 的依赖顺序，也不得向 M0-M4 回写 iOS 专属范围。阶段内�
 | 下一计划项 | M-IOS-5 完成后恢复 M2 WebDAV 拉取主线；REQ-002 人工 VoiceOver 走查继续待执行 |
 | 退出阻塞 | 无；坚果云真实认证和分页协议不阻塞本地只读或本地编辑。REQ-002 人工 VoiceOver 走查继续约束 REQ-002 状态变更，不阻塞 M-iOS |
 | 里程碑验收 | M0、M1 已完成；M2 依产品顺序延期 |
-| 插队需求 | [REQ-005 iOS 卡片流与每日回顾](requirements/REQ-005-ios-card-review.md)：复用 M-iOS 的只读边界，只改 iPhone 紧凑宽度；不改变 M0-M4 顺序，不新增写路径。任务拆分见 [REQ-005-ios-card-review-tasks.md](requirements/REQ-005-ios-card-review-tasks.md)。2026-11-01 确认需求，尚未开工 |
+| 插队需求 | [REQ-005 iOS 卡片流与每日回顾](requirements/REQ-005-ios-card-review.md)：复用 M-iOS 的只读边界，只改 iPhone 紧凑宽度；不改变 M0-M4 顺序，不新增写路径。任务拆分见 [REQ-005-ios-card-review-tasks.md](requirements/REQ-005-ios-card-review-tasks.md)。2026-11-01 确认需求；2026-11-03 T1-T6 完成：SwiftPM 单元门 `swift test --filter ReviewDrawingTests`（13）、`--filter ReviewStateStoreTests`（11）、`--filter CardFeedModelTests`（13）、`--filter ReviewFlowTests`（6）全绿；`make test` Mac 计划 439 用例 0 断言失败（BearObsUITests runner 会话级环境故障未执行用例）；`make test-ios` iPhone 409 用例 0 断言失败、iPad 常规宽度门通过（5 条 ReaderViewRenderingTests 信号陷阱为 Xcode 27.2 升级已归因的环境崩溃，重试全过）；iOS 覆盖率 core line 88.30% 达标、core subrange 78.92% 未达 80% 门，归因 ReviewDrawingTests/ReviewStateStoreTests/CardFeedModelTests 未注册进 BearObsIOSTests（待补注册重跑）。2026-11-04 静态评审修复 4 项（P1 批次行接通阅读面；P2 候选就绪前不发布会话、跨天重查批次、损坏状态文件删除重建）：`ReviewFlowTests` 增至 9 例、新增 UI 测试 `testReviewBatchRowOpensTheReader`，SwiftPM 全套 436 例 0 失败，iOS 单元 436 例 0 断言失败、构建通过、回顾/卡片流 UI 冒烟与新增用例通过 |
 
 状态含义：
 

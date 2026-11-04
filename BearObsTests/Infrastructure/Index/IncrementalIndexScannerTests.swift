@@ -131,7 +131,7 @@ final class IncrementalIndexScannerTests: XCTestCase {
 
         XCTAssertEqual(report, .init(indexed: 1))
         let row = try await noteRow("note.md", in: fixture.repository)
-        XCTAssertEqual(row["title"] as String, "Still indexed")
+        XCTAssertEqual(row.title, "Still indexed")
     }
 
     func testIndexesThenSkipsUnchangedMetadataWithoutReadingAgain() async throws {
@@ -144,8 +144,8 @@ final class IncrementalIndexScannerTests: XCTestCase {
         XCTAssertEqual(first, .init(indexed: 1))
         XCTAssertEqual(second, .init(metadataSkipped: 1))
         let row = try await noteRow("first.md", in: fixture.repository)
-        XCTAssertEqual(row["title"] as String, "First")
-        XCTAssertEqual(row["parse_status"] as String, "complete")
+        XCTAssertEqual(row.title, "First")
+        XCTAssertEqual(row.parseStatus, "complete")
     }
 
     func testMetadataChangeWithSameHashSkipsParsingAndRefreshesMetadata() async throws {
@@ -160,7 +160,7 @@ final class IncrementalIndexScannerTests: XCTestCase {
 
         XCTAssertEqual(report, .init(hashSkipped: 1))
         let row = try await noteRow("stable.md", in: fixture.repository)
-        XCTAssertEqual(row["modified_at"] as Double, changedDate.timeIntervalSince1970)
+        XCTAssertEqual(row.modifiedAt, changedDate.timeIntervalSince1970)
     }
 
     func testChangedContentIsReindexedAndDeletedFileIsRemoved() async throws {
@@ -191,15 +191,16 @@ final class IncrementalIndexScannerTests: XCTestCase {
 
         XCTAssertEqual(report, .init(failed: 1))
         let row = try await noteRow("broken.md", in: fixture.repository)
-        XCTAssertEqual(row["title"] as String, "broken")
-        XCTAssertEqual(row["preview"] as String, "")
-        XCTAssertEqual(row["parse_status"] as String, "failed")
+        XCTAssertEqual(row.title, "broken")
+        XCTAssertEqual(row.preview, "")
+        XCTAssertEqual(row.parseStatus, "failed")
         let tagCount = try await fixture.repository.databasePool.read {
             try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM note_tags")!
         }
-        let fts = try fixture.repository.databasePool.read {
-            try Row.fetchOne(
-                $0, sql: "SELECT title, body, tags FROM note_fts WHERE path = 'broken.md'")!
+        let fts = try await fixture.repository.databasePool.read { db -> (title: String, body: String, tags: String) in
+            let row = try Row.fetchOne(
+                db, sql: "SELECT title, body, tags FROM note_fts WHERE path = 'broken.md'")!
+            return (row["title"], row["body"], row["tags"])
         }
         let diagnostics = try await fixture.repository.databasePool.read {
             try String.fetchAll(
@@ -208,9 +209,9 @@ final class IncrementalIndexScannerTests: XCTestCase {
             )
         }
         XCTAssertEqual(tagCount, 0)
-        XCTAssertEqual(fts["title"] as String, "broken")
-        XCTAssertEqual(fts["body"] as String, "")
-        XCTAssertEqual(fts["tags"] as String, "")
+        XCTAssertEqual(fts.title, "broken")
+        XCTAssertEqual(fts.body, "")
+        XCTAssertEqual(fts.tags, "")
         XCTAssertEqual(diagnostics, ["markdown.note-too-large"])
     }
 
@@ -244,8 +245,8 @@ final class IncrementalIndexScannerTests: XCTestCase {
         let changedRow = try await noteRow("changed.md", in: fixture.repository)
 
         XCTAssertEqual(report, .init(indexed: 1, failed: 1))
-        XCTAssertEqual(preservedRow["title"] as String, "Preserved")
-        XCTAssertEqual(changedRow["title"] as String, "After")
+        XCTAssertEqual(preservedRow.title, "Preserved")
+        XCTAssertEqual(changedRow.title, "After")
     }
 
     func testReadFailureKeepsItsIndexAndContinuesReadingOtherFiles() async throws {
@@ -276,8 +277,8 @@ final class IncrementalIndexScannerTests: XCTestCase {
         let changedRow = try await noteRow("b.md", in: fixture.repository)
 
         XCTAssertEqual(report, .init(indexed: 1, failed: 1))
-        XCTAssertEqual(unavailableRow["title"] as String, "Old unavailable")
-        XCTAssertEqual(changedRow["title"] as String, "After")
+        XCTAssertEqual(unavailableRow.title, "Old unavailable")
+        XCTAssertEqual(changedRow.title, "After")
     }
 
     func testUnavailableStatePersistsAnonymouslyAndClearsAfterRecovery() async throws {
@@ -352,8 +353,8 @@ final class IncrementalIndexScannerTests: XCTestCase {
         let changedRow = try await noteRow("changed.md", in: fixture.repository)
 
         XCTAssertEqual(report, .init(indexed: 1))
-        XCTAssertEqual(preservedRow["title"] as String, "Preserved")
-        XCTAssertEqual(changedRow["title"] as String, "After")
+        XCTAssertEqual(preservedRow.title, "Preserved")
+        XCTAssertEqual(changedRow.title, "After")
     }
 
     func testRefreshUpdatesOneSavedNoteWithoutAFullVaultScan() async throws {
@@ -380,7 +381,7 @@ final class IncrementalIndexScannerTests: XCTestCase {
         )
 
         let row = try await noteRow("note.md", in: fixture.repository)
-        XCTAssertEqual(row["title"] as String, "After")
+        XCTAssertEqual(row.title, "After")
         let tags = try await fixture.repository.databasePool.read {
             try String.fetchAll($0, sql: "SELECT normalized_name FROM tags ORDER BY 1")
         }
@@ -437,12 +438,25 @@ extension IncrementalIndexScannerTests {
         try Data(content.utf8).write(to: url)
     }
 
+    private struct NoteRowSnapshot: Sendable {
+        let title: String
+        let preview: String
+        let parseStatus: String
+        let modifiedAt: Double
+    }
+
     private func noteRow(
         _ path: String,
         in repository: SQLiteIndexRepository
-    ) async throws -> Row {
-        try repository.databasePool.read {
-            try Row.fetchOne($0, sql: "SELECT * FROM notes WHERE path = ?", arguments: [path])!
+    ) async throws -> NoteRowSnapshot {
+        try await repository.databasePool.read { db in
+            let row = try Row.fetchOne(
+                db, sql: "SELECT * FROM notes WHERE path = ?", arguments: [path])!
+            return NoteRowSnapshot(
+                title: row["title"],
+                preview: row["preview"],
+                parseStatus: row["parse_status"],
+                modifiedAt: row["modified_at"])
         }
     }
 

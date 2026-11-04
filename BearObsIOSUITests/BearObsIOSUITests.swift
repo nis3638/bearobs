@@ -21,8 +21,8 @@ final class BearObsIOSUITests: XCTestCase {
         )
     }
 
-    /// AC-REQ-004-02/03：打开临时 Vault → 列表 → 阅读 → 返回；
-    /// 阅读面不得出现任何编辑入口。
+    /// AC-REQ-005-01 / AC-REQ-004-02/03：打开临时 Vault → 卡片流 → 阅读 → 返回；
+    /// 首页是卡片流而不是旧的笔记列表入口，阅读面不得出现任何编辑入口。
     func testSeededVaultOpensAndTheReaderStaysReadOnly() throws {
         let (application, temporaryRoot) = try makeSeededApplication(
             noteNamed: "ReadOnlySmoke.md", content: "# 只读冒烟\n\n第一段。\n")
@@ -30,19 +30,18 @@ final class BearObsIOSUITests: XCTestCase {
 
         application.launch()
 
-        let list = application.descendants(matching: .any)["workspace-note-list"]
-        XCTAssertTrue(list.waitForExistence(timeout: 10), "The note list must be visible")
+        let feed = application.descendants(matching: .any)["card-feed-list"]
+        XCTAssertTrue(feed.waitForExistence(timeout: 10), "The card feed must be visible")
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(identifier: "workspace-note-list").count,
+            0,
+            "The compact home must not fall back to the old note-list entry"
+        )
 
-        let row = application.descendants(matching: .any)
-            .matching(
-                NSPredicate(
-                    format: "label CONTAINS %@ OR value CONTAINS %@",
-                    "只读冒烟", "只读冒烟"
-                )
-            )
-            .firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Expected a row for 只读冒烟")
-        row.tap()
+        let card = noteRow(titled: "只读冒烟", in: application)
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Expected a card for 只读冒烟")
+        card.tap()
 
         let reader = application.descendants(matching: .any)["reader-content"]
         XCTAssertTrue(reader.waitForExistence(timeout: 10), "The reader must open")
@@ -56,12 +55,13 @@ final class BearObsIOSUITests: XCTestCase {
         application.navigationBars.buttons["BackButton"].tap()
 
         XCTAssertTrue(
-            list.waitForExistence(timeout: 10),
-            "Popping back must return to the note list"
+            feed.waitForExistence(timeout: 10),
+            "Popping back must return to the card feed"
         )
     }
 
-    /// AC-REQ-004-02：紧凑导航的五个固定入口都存在。
+    /// AC-REQ-005-01：紧凑导航只保留三个固定入口（笔记 / 回顾 / 标签），
+    /// 「最近」「收藏」不再出现在紧凑宽度顶级入口。
     func testCompactTabsExposeTheFixedEntries() throws {
         let (application, temporaryRoot) = try makeSeededApplication(
             noteNamed: "TabsSmoke.md", content: "# 标签页冒烟\n\n正文。\n")
@@ -69,12 +69,154 @@ final class BearObsIOSUITests: XCTestCase {
 
         application.launch()
 
-        for title in ["笔记", "最近", "收藏", "搜索", "标签"] {
+        for title in ["笔记", "回顾", "标签"] {
             XCTAssertTrue(
                 application.tabBars.buttons[title].waitForExistence(timeout: 10),
                 "Expected the \(title) tab"
             )
         }
+        XCTAssertEqual(application.tabBars.buttons.count, 3, "Compact width keeps exactly three entries")
+        for removed in ["ios-tab-recent", "ios-tab-favorites"] {
+            XCTAssertEqual(
+                application.descendants(matching: .any)
+                    .matching(identifier: removed).count,
+                0,
+                "\(removed) must not exist in the compact navigation"
+            )
+        }
+
+        application.tabBars.buttons["回顾"].tap()
+        XCTAssertTrue(
+            application.descendants(matching: .any)["review-root"]
+                .waitForExistence(timeout: 10),
+            "The review entry must present its root view"
+        )
+    }
+
+    /// FR-002：规则确认后展示当日批次；点批次行推入与卡片流相同的阅读面，
+    /// 且 iOS 阅读面不出现任何编辑入口。返回后批次仍在。
+    func testReviewBatchRowOpensTheReader() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "冒烟笔记.md", content: "# 冒烟标题\n\n第一段正文。\n")
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+
+        application.launch()
+
+        application.tabBars.buttons["回顾"].tap()
+        let done = application.descendants(matching: .any)["review-rule-done"]
+        XCTAssertTrue(
+            done.waitForExistence(timeout: 10),
+            "First entry must present the rule editor once loading finishes"
+        )
+        done.tap()
+
+        let row = application.descendants(matching: .any)["review-batch-row-冒烟笔记.md"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Expected the drawn batch row")
+        row.tap()
+
+        let reader = application.descendants(matching: .any)["reader-content"]
+        XCTAssertTrue(
+            reader.waitForExistence(timeout: 10),
+            "The batch row must push the reader"
+        )
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(identifier: "reader-edit-button").count,
+            0,
+            "The reader opened from review must not present any edit entry"
+        )
+
+        application.navigationBars.buttons["BackButton"].tap()
+
+        XCTAssertTrue(
+            row.waitForExistence(timeout: 10),
+            "Popping back must return to the review batch"
+        )
+    }
+
+    /// FR-001.3 / FR-001.5 / FR-003：卡片展示标题、5 个标签取 3 加「+2」、
+    /// 失败笔记显示固定文案；点卡片上的标签按完整身份精确过滤，可清除。
+    func testCardFeedFiltersByTappedTagAndShowsFixedCopyForFailedNotes() throws {
+        let (application, temporaryRoot) = try makeSeededApplication(
+            noteNamed: "项目计划.md",
+            content: "---\ntags: [project, t1, t2, t3, t4]\n---\n# 项目计划\n\n第一段正文。\n"
+        )
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        try writeNote(
+            named: "移动端.md",
+            content: "---\ntags: [project/mobile]\n---\n# 移动端\n\n只有子标签。\n",
+            in: temporaryRoot
+        )
+        try writeNote(named: "其他.md", content: "# 其他笔记\n\n正文。\n", in: temporaryRoot)
+        try Data([0xFF, 0x00, 0x01]).write(
+            to: temporaryRoot.appendingPathComponent("Vault/Broken.md")
+        )
+
+        application.launch()
+
+        let feed = application.descendants(matching: .any)["card-feed-list"]
+        XCTAssertTrue(feed.waitForExistence(timeout: 10), "The card feed must be visible")
+
+        XCTAssertTrue(noteRow(titled: "项目计划", in: application).waitForExistence(timeout: 10))
+        XCTAssertTrue(noteRow(titled: "移动端", in: application).waitForExistence(timeout: 10))
+        XCTAssertTrue(noteRow(titled: "其他笔记", in: application).waitForExistence(timeout: 10))
+        // FR-001.5：失败笔记仍占一个卡片位置，摘要处显示固定文案。
+        XCTAssertTrue(
+            application.staticTexts["这条笔记暂时无法读取"].waitForExistence(timeout: 10),
+            "The failed note must degrade to the fixed copy"
+        )
+        // FR-001.3：5 个标签展示 3 个，其余折为「+N」。
+        XCTAssertTrue(
+            application.staticTexts["+2"].waitForExistence(timeout: 10),
+            "The fifth and sixth tags must fold into +2"
+        )
+
+        // FR-003.1/2：点卡片上的标签，按完整标签身份精确过滤。
+        let projectChip = application.descendants(matching: .any)["card-tag-project"].firstMatch
+        XCTAssertTrue(projectChip.waitForExistence(timeout: 10))
+        projectChip.tap()
+
+        XCTAssertTrue(
+            application.descendants(matching: .any)["card-feed-filter-bar"]
+                .waitForExistence(timeout: 10),
+            "An active filter must be announced by the filter bar"
+        )
+        XCTAssertTrue(noteRow(titled: "项目计划", in: application).waitForExistence(timeout: 10))
+        XCTAssertFalse(
+            noteRow(titled: "移动端", in: application).exists,
+            "Filtering project must not include notes tagged only project/mobile"
+        )
+        XCTAssertFalse(noteRow(titled: "其他笔记", in: application).exists)
+
+        // FR-003.3：过滤可清除，清除后回到全部。
+        let clear = application.descendants(matching: .any)["card-feed-filter-clear"].firstMatch
+        XCTAssertTrue(clear.waitForExistence(timeout: 10))
+        clear.tap()
+        XCTAssertTrue(noteRow(titled: "移动端", in: application).waitForExistence(timeout: 10))
+        XCTAssertTrue(noteRow(titled: "其他笔记", in: application).waitForExistence(timeout: 10))
+    }
+
+    /// FR-001.1：空 Vault 显示卡片流的空状态，不出现旧笔记列表。
+    func testCardFeedEmptyVaultShowsEmptyState() throws {
+        let (application, temporaryRoot) = try makeIsolatedApplication()
+        defer { cleanUp(application: application, temporaryRoot: temporaryRoot) }
+        let vault = temporaryRoot.appendingPathComponent("Vault", isDirectory: true)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        application.launchEnvironment[Self.autoOpenVaultEnvironmentKey] = vault.path
+
+        application.launch()
+
+        XCTAssertTrue(
+            application.descendants(matching: .any)["card-feed-empty"]
+                .waitForExistence(timeout: 10),
+            "An empty vault must show the card feed empty state"
+        )
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(identifier: "workspace-note-list").count,
+            0,
+            "The old note-list entry must not reappear for empty vaults"
+        )
     }
 
     /// 已打开 Vault 后仍需提供可见、可点击的切换入口。这个入口必须位于
@@ -86,8 +228,8 @@ final class BearObsIOSUITests: XCTestCase {
 
         application.launch()
 
-        let list = application.descendants(matching: .any)["workspace-note-list"]
-        XCTAssertTrue(list.waitForExistence(timeout: 10), "The workspace must be visible")
+        let feed = application.descendants(matching: .any)["card-feed-list"]
+        XCTAssertTrue(feed.waitForExistence(timeout: 10), "The workspace must be visible")
 
         let openVault = application.descendants(matching: .any)["open-vault"]
         XCTAssertTrue(
@@ -141,11 +283,18 @@ final class BearObsIOSUITests: XCTestCase {
 
         XCTAssertTrue(noteRow(titled: "Vault B", in: application).waitForExistence(timeout: 10))
         XCTAssertFalse(noteRow(titled: "Vault A", in: application).exists)
-        application.tabBars.buttons["收藏"].tap()
-        XCTAssertTrue(
-            application.staticTexts["还没有收藏"].waitForExistence(timeout: 10)
-        )
-        XCTAssertFalse(noteRow(titled: "Vault A", in: application).exists)
+
+        // 收藏按 Vault 隔离：Vault B 的同名笔记不得显示 Vault A 的收藏状态
+        // （紧凑宽度的「收藏」顶级入口已被 REQ-005 移除，改由阅读面按钮断言）。
+        noteRow(titled: "Vault B", in: application).tap()
+        let vaultBFavorite = application.buttons.matching(
+            identifier: "reader-favorite-button"
+        ).firstMatch
+        XCTAssertTrue(vaultBFavorite.waitForExistence(timeout: 10))
+        let notFavorited = NSPredicate(format: "label == %@ AND isEnabled == true", "收藏")
+        expectation(for: notFavorited, evaluatedWith: vaultBFavorite)
+        waitForExpectations(timeout: 10)
+        application.navigationBars.buttons.firstMatch.tap()
 
         application.terminate()
         application.launchEnvironment.removeValue(forKey: Self.autoOpenVaultEnvironmentKey)
@@ -225,7 +374,8 @@ final class BearObsIOSUITests: XCTestCase {
     }
 
     /// 大量标签必须处于真正的滚动容器中；末项可达，并向 VoiceOver 同时表达
-    /// 完整层级与命中笔记数。
+    /// 完整层级与命中笔记数。点标签推入的是预置了该过滤条件的卡片流
+    /// （REQ-005 FR-003.4），过滤完整身份精确匹配（FR-003.2）且可清除（FR-003.3）。
     func testTagListScrollsToLastNestedTagAndExposesItsCount() throws {
         let flatTags = (0..<40).map { String(format: "tag%02d", $0) }
         let tags = (flatTags + ["project/mobile"]).joined(separator: ", ")
@@ -261,11 +411,25 @@ final class BearObsIOSUITests: XCTestCase {
         XCTAssertEqual(lastTag.label, "project/mobile，1 篇笔记")
         lastTag.tap()
 
-        let taggedNotes = application.descendants(matching: .any)["workspace-tag-note-list"]
+        // FR-003.4：点标签推入预置了该过滤条件的卡片流，而不是旧笔记列表。
+        let presetFeed = application.descendants(matching: .any)["card-feed-list"]
         XCTAssertTrue(
-            taggedNotes.waitForExistence(timeout: 10),
-            "Tapping a nested tag must open its exact-match note list"
+            presetFeed.waitForExistence(timeout: 10),
+            "Tapping a tag must push the card feed preset with that filter"
         )
+        XCTAssertTrue(
+            application.descendants(matching: .any)["card-feed-filter-bar"]
+                .waitForExistence(timeout: 10),
+            "The preset filter must be announced by the filter bar"
+        )
+        XCTAssertEqual(
+            application.descendants(matching: .any)
+                .matching(identifier: "workspace-tag-note-list").count,
+            0,
+            "The old exact-match note list must not reappear"
+        )
+
+        // FR-003.2：完整标签身份精确匹配——project/mobile 不含仅标记 project 的笔记。
         let matchingNote = noteRow(titled: "大量标签", in: application)
         XCTAssertTrue(matchingNote.waitForExistence(timeout: 10))
         XCTAssertFalse(
@@ -273,16 +437,27 @@ final class BearObsIOSUITests: XCTestCase {
             "A child tag must not include notes tagged only with its parent"
         )
 
-        taggedNotes.swipeDown()
-        XCTAssertTrue(taggedNotes.waitForExistence(timeout: 10))
+        presetFeed.swipeDown()
+        XCTAssertTrue(presetFeed.waitForExistence(timeout: 10))
         XCTAssertTrue(
             noteRow(titled: "大量标签", in: application).waitForExistence(timeout: 10),
-            "The exact-match list must remain usable after pull-to-refresh"
+            "The preset filtered feed must remain usable after pull-to-refresh"
+        )
+
+        // FR-003.3：预置过滤可清除，清除后回到全部。
+        let clear = application.descendants(matching: .any)["card-feed-filter-clear"].firstMatch
+        XCTAssertTrue(clear.waitForExistence(timeout: 10))
+        clear.tap()
+        XCTAssertTrue(
+            noteRow(titled: "仅父级标签", in: application).waitForExistence(timeout: 10),
+            "Clearing the preset filter must return to the full feed"
         )
     }
 
-    /// AC-REQ-004-02/05：搜索结果可进入阅读，收藏跨重启持久化；整个流程
-    /// 只能写 App 自己的用户状态，Vault 内所有 Markdown 字节必须保持不变。
+    /// AC-REQ-004-02/05 + FR-004：卡片流顶部搜索框复用离线全文搜索，结果以
+    /// 卡片呈现；收藏跨重启持久化（紧凑宽度已无「收藏」顶级入口，改由阅读面
+    /// 按钮状态断言）；整个流程只能写 App 自己的用户状态，Vault 内所有
+    /// Markdown 字节必须保持不变。
     func testSearchFavoriteAndRelaunchKeepVaultBytesUnchanged() throws {
         let (application, temporaryRoot) = try makeSeededApplication(
             noteNamed: "Needle.md",
@@ -298,12 +473,8 @@ final class BearObsIOSUITests: XCTestCase {
         let before = try markdownBytes(in: vault)
 
         application.launch()
-        let searchTab = application.tabBars.buttons["搜索"]
-        XCTAssertTrue(searchTab.waitForExistence(timeout: 10))
-        searchTab.tap()
-
         let search = application.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        XCTAssertTrue(search.waitForExistence(timeout: 10), "The card feed must offer search")
         search.tap()
         search.typeText("unique-search-token")
 
@@ -327,10 +498,20 @@ final class BearObsIOSUITests: XCTestCase {
 
         application.terminate()
         application.launch()
-        let favoritesTab = application.tabBars.buttons["收藏"]
-        XCTAssertTrue(favoritesTab.waitForExistence(timeout: 10))
-        favoritesTab.tap()
-        XCTAssertTrue(noteRow(titled: "可搜索笔记", in: application).waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            noteRow(titled: "可搜索笔记", in: application).waitForExistence(timeout: 10)
+        )
+        noteRow(titled: "可搜索笔记", in: application).tap()
+        let restoredFavorite = application.buttons.matching(
+            identifier: "reader-favorite-button"
+        ).firstMatch
+        XCTAssertTrue(restoredFavorite.waitForExistence(timeout: 10))
+        let favoriteRestored = NSPredicate(
+            format: "label == %@ AND isEnabled == true",
+            "取消收藏"
+        )
+        expectation(for: favoriteRestored, evaluatedWith: restoredFavorite)
+        waitForExpectations(timeout: 10)
 
         XCTAssertEqual(try markdownBytes(in: vault), before)
     }
@@ -382,7 +563,7 @@ final class BearObsIOSUITests: XCTestCase {
         application.launch()
 
         XCTAssertTrue(
-            application.descendants(matching: .any)["workspace-note-list"]
+            application.descendants(matching: .any)["card-feed-list"]
                 .waitForExistence(timeout: 10)
         )
         XCTAssertTrue(application.tabBars.buttons["标签"].isHittable)

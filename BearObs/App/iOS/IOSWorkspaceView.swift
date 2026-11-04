@@ -6,11 +6,11 @@ import SwiftUI
     import BearObsLibrary
 #endif
 
-/// iOS workspace shell (REQ-004 §4.2/§4.3): compact width presents the fixed
-/// five-entry tab navigation, regular width reuses the shared three-column
-/// workspace so iPad keeps REQ-001's column responsibilities. The reader is
-/// always constructed with `editorSource == nil`; there is no write path in
-/// this target.
+/// iOS workspace shell (REQ-004 §4.2/§4.3, REQ-005 FR-001): compact width
+/// presents the fixed three-entry tab navigation (notes card feed / review /
+/// tags), regular width reuses the shared three-column workspace so iPad keeps
+/// REQ-001's column responsibilities. The reader is always constructed with
+/// `editorSource == nil`; there is no write path in this target.
 struct IOSWorkspaceView: View {
     @Bindable var workspace: AppWorkspaceModel
     @State private var isImporterPresented = false
@@ -122,64 +122,22 @@ private struct OpenVaultToolbar: ToolbarContent {
 
 // MARK: - Compact width (iPhone)
 
+/// REQ-005 FR-001.1：紧凑宽度顶级入口固定为三个——笔记（卡片流）、回顾、
+/// 标签。「最近」由卡片流的时间倒序覆盖，「搜索」由卡片流顶部搜索框承接，
+/// 「收藏」不再出现在紧凑宽度顶级入口。
 private struct IOSCompactWorkspaceView: View {
     let environment: AppEnvironment
     let openVault: () -> Void
 
     var body: some View {
         TabView {
-            CompactTab(
-                section: .notes,
-                source: environment.readerSource,
-                favorites: environment.favoritesModel,
+            CompactCardFeedTab(
+                environment: environment,
                 openVault: openVault
-            ) { selection in
-                WorkspaceLibraryColumn(
-                    model: environment.libraryModel,
-                    selection: selection
-                )
-            }
-            CompactTab(
-                section: .recent,
-                source: environment.readerSource,
-                favorites: environment.favoritesModel,
-                openVault: openVault
-            ) { selection in
-                WorkspaceRecentColumn(
-                    model: environment.recentModel,
-                    availabilityModel: environment.libraryModel,
-                    selection: selection
-                )
-            }
-            CompactTab(
-                section: .favorites,
-                source: environment.readerSource,
-                favorites: environment.favoritesModel,
-                openVault: openVault
-            ) { selection in
-                WorkspaceFavoritesColumn(
-                    model: environment.favoritesModel,
-                    availabilityModel: environment.libraryModel,
-                    selection: selection
-                )
-            }
-            CompactTab(
-                section: .search,
-                source: environment.readerSource,
-                favorites: environment.favoritesModel,
-                openVault: openVault
-            ) { selection in
-                WorkspaceSearchColumn(
-                    model: environment.searchModel,
-                    availabilityModel: environment.libraryModel,
-                    selection: selection
-                )
-            }
+            )
+            CompactReviewTab(environment: environment)
             CompactTagTab(
-                tagsModel: environment.tagsModel,
-                availabilityModel: environment.libraryModel,
-                source: environment.readerSource,
-                favorites: environment.favoritesModel,
+                environment: environment,
                 openVault: openVault
             )
         }
@@ -187,47 +145,61 @@ private struct IOSCompactWorkspaceView: View {
     }
 }
 
-/// One compact tab: a navigation stack whose list selection drives the push
-/// onto the shared reader. Selection is cleared when the list reappears so
-/// the same note can be re-opened after popping back.
-private struct CompactTab<Column: View>: View {
-    let section: WorkspaceSection
-    let source: ReaderDataSource
-    let favorites: FavoritesFeatureModel?
+/// 笔记 tab：卡片流 + 阅读面推入。推入沿用 `navigationDestination(item:)`，
+/// 返回时 item 自动清空，卡片流的过滤状态与滚动位置不受影响。
+private struct CompactCardFeedTab: View {
+    let environment: AppEnvironment
     let openVault: () -> Void
-    @ViewBuilder let column: (Binding<VaultPath?>) -> Column
 
     @State private var selection: VaultPath?
 
     var body: some View {
         NavigationStack {
-            column($selection)
-                .navigationDestination(item: $selection) { path in
-                    ReaderView(
-                        path: path,
-                        source: source,
-                        favorites: favorites,
-                        editorSource: nil
-                    )
-                }
-                .onAppear { selection = nil }
-                .toolbar { OpenVaultToolbar(openVault: openVault) }
+            CardFeedView(
+                libraryModel: environment.libraryModel,
+                tagsModel: environment.tagsModel,
+                searchModel: environment.searchModel,
+                readerSource: environment.readerSource,
+                favoritesModel: environment.favoritesModel,
+                selection: $selection
+            )
+            .toolbar { OpenVaultToolbar(openVault: openVault) }
+            .navigationDestination(item: $selection) { path in
+                ReaderView(
+                    path: path,
+                    source: environment.readerSource,
+                    favorites: environment.favoritesModel,
+                    editorSource: nil
+                )
+            }
         }
         .tabItem {
-            Label(section.title, systemImage: section.systemImage)
-                .accessibilityIdentifier("ios-tab-\(section.rawValue)")
+            Label("笔记", systemImage: "note.text")
+                .accessibilityIdentifier("ios-tab-notes")
         }
     }
 }
 
-/// 标签 tab: tag tree first, then the matched note list, then the reader —
-/// all pushes inside a single navigation stack. Tag matching reuses the
-/// exact full-identity semantics of the Mac sidebar (REQ-001).
+/// 回顾 tab：规则设置与当日批次（REQ-005 FR-002），由 T5 实现接入。
+private struct CompactReviewTab: View {
+    let environment: AppEnvironment
+
+    var body: some View {
+        NavigationStack {
+            ReviewRootView(environment: environment)
+        }
+        .tabItem {
+            Label("回顾", systemImage: "sparkles")
+                .accessibilityIdentifier("ios-tab-review")
+        }
+    }
+}
+
+/// 标签 tab：标签列表在前；点标签推入预置了该过滤条件的卡片流
+/// （REQ-005 FR-003.4），卡片流内点卡片继续推入阅读面。标签匹配复用
+/// 完整标签身份的精确匹配语义（REQ-001 / FR-003.2），过滤可清除（FR-003.3）。
 private struct CompactTagTab: View {
-    let tagsModel: TagsFeatureModel
-    let availabilityModel: LibraryFeatureModel
-    let source: ReaderDataSource
-    let favorites: FavoritesFeatureModel?
+    let environment: AppEnvironment
     let openVault: () -> Void
 
     @State private var selection: VaultPath?
@@ -235,26 +207,28 @@ private struct CompactTagTab: View {
     var body: some View {
         NavigationStack {
             CompactTagList(
-                tagsModel: tagsModel,
-                availabilityModel: availabilityModel
+                tagsModel: environment.tagsModel,
+                availabilityModel: environment.libraryModel
             )
             .toolbar { OpenVaultToolbar(openVault: openVault) }
             .navigationDestination(for: String.self) { normalizedName in
-                WorkspaceTaggedNotesColumn(
-                    model: tagsModel,
-                    availabilityModel: availabilityModel,
-                    normalizedName: normalizedName,
-                    selection: $selection
+                CardFeedView(
+                    libraryModel: environment.libraryModel,
+                    tagsModel: environment.tagsModel,
+                    searchModel: environment.searchModel,
+                    readerSource: environment.readerSource,
+                    favoritesModel: environment.favoritesModel,
+                    selection: $selection,
+                    presetTagIdentity: normalizedName
                 )
                 .navigationDestination(item: $selection) { path in
                     ReaderView(
                         path: path,
-                        source: source,
-                        favorites: favorites,
+                        source: environment.readerSource,
+                        favorites: environment.favoritesModel,
                         editorSource: nil
                     )
                 }
-                .onAppear { selection = nil }
             }
         }
         .tabItem {

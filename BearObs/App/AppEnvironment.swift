@@ -25,6 +25,9 @@ struct AppEnvironment {
     let favoritesModel: FavoritesFeatureModel
     let readerSource: ReaderDataSource
     let editorSource: EditorDataSource?
+    /// REQ-005 FR-005：按 Vault 隔离的回顾状态存储，与 `user-state.json`
+    /// 同目录；构造失败时为 nil，回顾入口降级，不影响其余功能。
+    let reviewState: ReviewStateStore?
     let vaultID: UUID?
     let vaultURL: URL?
     private let vaultScope: VaultScope?
@@ -101,6 +104,7 @@ struct AppEnvironment {
         )
         let indexReadiness = IndexReadiness(scanner: scanner)
         let userState = try FileUserStateStore(metadataDirectory: metadata)
+        let reviewState = try? ReviewStateStore(metadataDirectory: metadata)
 
         let librarySource = LibraryDataSource(
             load: {
@@ -179,6 +183,7 @@ struct AppEnvironment {
                 }
             ),
             editorSource: editorSource,
+            reviewState: reviewState,
             vaultID: selection.id,
             vaultURL: root,
             vaultScope: scope
@@ -213,6 +218,7 @@ struct AppEnvironment {
         ),
         readerSource: .unavailable,
         editorSource: nil,
+        reviewState: nil,
         vaultID: nil,
         vaultURL: nil,
         vaultScope: nil

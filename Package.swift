@@ -76,6 +76,26 @@ let package = Package(
             dependencies: ["BearObsDomain"],
             path: "BearObs/Infrastructure/UserState"
         ),
+        // REQ-005 T5: ReviewSessionModel is UI-free session logic that lives in
+        // the iOS shell directory (BearObs/App/iOS) alongside its SwiftUI call
+        // sites. BearObsAppShell excludes that directory, so the model gets its
+        // own SwiftPM target with an explicit sources list; the other files in
+        // the directory stay iOS-app-target-only.
+        .target(
+            name: "BearObsReviewSession",
+            dependencies: ["BearObsDomain", "BearObsUserState"],
+            path: "BearObs/App/iOS",
+            exclude: [
+                "Assets.xcassets",
+                "BearObsIOSApp.swift",
+                "CardFeedView.swift",
+                "IOSWorkspaceView.swift",
+                "PrivacyInfo.xcprivacy",
+                "ReviewRootView.swift",
+                "ReviewRuleEditor.swift",
+            ],
+            sources: ["ReviewSessionModel.swift"]
+        ),
         .executableTarget(
             name: "BearObsAppShell",
             dependencies: [
@@ -144,6 +164,20 @@ let package = Package(
                 "BearObsMarkdown",
             ],
             path: "BearObsTests/Features/Library"
+        ),
+        // REQ-005 T5: ReviewFlowTests exercises ReviewSessionModel without
+        // SwiftUI. Only this file is SwiftPM-visible; WorkspaceSectionTests.swift
+        // next to it needs app-target types and stays in the Xcode test target.
+        .testTarget(
+            name: "BearObsAppTests",
+            dependencies: [
+                "BearObsDomain",
+                "BearObsUserState",
+                "BearObsReviewSession",
+            ],
+            path: "BearObsTests/App",
+            exclude: ["WorkspaceSectionTests.swift"],
+            sources: ["ReviewFlowTests.swift"]
         ),
     ]
 )

@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 #if SWIFT_PACKAGE
-    import BearObsUserState
+    @testable import BearObsUserState
 #else
     @testable import BearObs
 #endif
